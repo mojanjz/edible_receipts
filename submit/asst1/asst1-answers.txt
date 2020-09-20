@@ -33,3 +33,84 @@ Date:   Sun Sep 13 20:07:24 2020 -0700
 2. git tag
 asst1-start
 
+Code Reading Assignment 
+
+2) The lubraries that are shared by the kernel and the user processes are stored in the common folder and the ones specific to the user processes are under userland/include/libc
+3) It configures the target hardware, target machine and also the OSTree. You can also configure whether you want it to be in debug mode or optimize mode. You would want to rerun it if you are changing the mode or moving the directory of your OStree, the hardware or the machine.
+4) Each device handles memory allocation differently as well as process allocation to different processors. The functions in the assembly code that are dealing with registers and memory have to be machine dependent.
+5) The trapframe has to store information about the function that was interrupted. Therefore it needs to be large enough to be able to do that.
+6) there are 37 uint32_t variabes in trapframe.h which corresponds to 4*37 = 148 bytes. It has to be this big to be able to store information regarding the function that was interrupted, so it can safely return back and continue execution.
+7) To add new files to the system, you'd have to add it to conf.kern, and then rerun the config script. Also if you are adding or removing new devices or any other changes to the conf.kern file, you'd have to run the configure script again. Rerun this step if you change the kernel config, add new source files to the build, or add new build options. 
+8) You want to run it the first time you are configuring your kernel similar to when we were setting up our system for the first time. Also this file includes conf.kern as well, so any changes to the dependencies should be followed by a bmake depend call as it updates the dependencies of the kernel. Rerun bmake depend if/when you change header file inclusions, or after re-running config.
+9) bmake and bmake install need to be run if you want to recompile the kernel. This should probably be done after any changes to the kernel source code. I believe if you rerun bmake depend, you are supposed to recompile the kernel as well. bmake install copies over the binaries to their destination. This should be run after bmake which builds and prepares files to be moved to the destination. 
+10) I would add it to the operations menu. To be able to do that, I would add a new function similar to cmd_shell in menu.c that takes no arguements and just prints "hello world" on the shell. The function could look something like this: 
+/*
+ * Command for printing hello world.
+ */
+static
+int
+cmd_hello_world(int nargs, char **args)
+{
+	(void)nargs;
+	(void)args;
+	kprintf("Hello World!\n")
+
+	return 0;
+}
+
+then, I would add this method to the command table, cmdtable. { "helloworld", cmd_hello_world } which calls this command if the user inputs helloworld. And as the last step I would add it to the operations menu to let the user know they can use this command. I would add something like [helloworld] Prints Hello World to the opsmenu.
+11) We are using MIPS architecture and assembly language and as it turns out this architecture is not compatible with our current devices. 
+12) main is called from crt0.S and also the return value is taken care of in this file. The return value of main is stored in v0 register, then also it's copied to s0 register just in case exit() returns and also add it to a0 so it's the argument to exit.
+13) 
+1) I would start from userland/bin/new_syscall. There needs to be the new_syscall.c file and the Makefile. 
+2) In new_syscall.c, I'd have a main function that then calls a system call called new_syscall.
+3) This new system call definition needs to be added to stat.h.
+4) On the kernel side I'd have to add new_syscall to kern/include/syscall.h and also assign a new system call number to it in kern/include/kern/syscall.h. I also have to add a new file to the kern/syscall directory that implements the system call. 
+5) In syscall.c I'd have to add a new case statement which calls the new_syscall method that I have already implemented if the system call number matches the defined system call number in syscall.h
+
+14) __start() is the very first function. It appears as soon as you attach the socket. 
+15) addiu sp, sp, -24, this is also on the very first page as soon as you attach the socket.
+16) 
+1       breakpoint     keep y   0x800139e4 in kmain at ../../main/main.c:211
+	breakpoint already hit 1 time
+2       breakpoint     keep y   0x80014608 in cmd_mainmenu at ../../main/menu.c:519
+	breakpoint already hit 1 time
+17) 
+18) in start.S
+(gdb) n
+215	   jal kmain
+
+19)
+(gdb) list
+105			GROUP_VERSION, buildconfig, buildversion);
+106		kprintf("\n");
+107	
+108		/* Early initialization. */
+109		ram_bootstrap();
+110		proc_bootstrap();
+111		thread_bootstrap();
+112		hardclock_bootstrap();
+113		vfs_bootstrap();
+114		kheap_nextgeneration();
+20) 
+(gdb) p *bootcpu
+Cannot access memory at address 0x80000
+21)
+$2 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {tl_head = {tln_prev = 0x0, 
+      tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af10, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, 
+  c_hardclocks = 0, c_spinlocks = 0, c_isidle = false, c_runqueue = {tl_head = {tln_prev = 0x0, tln_next = 0x8003af44, tln_self = 0x0}, 
+    tl_tail = {tln_prev = 0x8003af38, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {splk_lock = 0, splk_holder = 0x0}, 
+  c_ipi_pending = 0, c_shootdown = {{ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0, 
+    splk_holder = 0x0}}
+22)
+(gdb) cpuarray allcpus
+0 cpus
+23)
+1 cpus
+cpu 0:
+$1 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {tl_head = {tln_prev = 0x0, 
+      tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af10, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, 
+  c_hardclocks = 1, c_spinlocks = 0, c_isidle = false, c_runqueue = {tl_head = {tln_prev = 0x0, tln_next = 0x8003af44, tln_self = 0x0}, 
+    tl_tail = {tln_prev = 0x8003af38, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {splk_lock = 0, splk_holder = 0x0}, 
+  c_ipi_pending = 0, c_shootdown = {{ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0, 
+    splk_holder = 0x0}}

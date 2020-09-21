@@ -33,17 +33,30 @@ Date:   Sun Sep 13 20:07:24 2020 -0700
 2. git tag
 asst1-start
 
-Code Reading Assignment 
 
-2) The lubraries that are shared by the kernel and the user processes are stored in the common folder and the ones specific to the user processes are under userland/include/libc
-3) It configures the target hardware, target machine and also the OSTree. You can also configure whether you want it to be in debug mode or optimize mode. You would want to rerun it if you are changing the mode or moving the directory of your OStree, the hardware or the machine.
-4) Each device handles memory allocation differently as well as process allocation to different processors. The functions in the assembly code that are dealing with registers and memory have to be machine dependent.
-5) The trapframe has to store information about the function that was interrupted. Therefore it needs to be large enough to be able to do that.
-6) there are 37 uint32_t variabes in trapframe.h which corresponds to 4*37 = 148 bytes. It has to be this big to be able to store information regarding the function that was interrupted, so it can safely return back and continue execution.
-7) To add new files to the system, you'd have to add it to conf.kern, and then rerun the config script. Also if you are adding or removing new devices or any other changes to the conf.kern file, you'd have to run the configure script again. Rerun this step if you change the kernel config, add new source files to the build, or add new build options. 
-8) You want to run it the first time you are configuring your kernel similar to when we were setting up our system for the first time. Also this file includes conf.kern as well, so any changes to the dependencies should be followed by a bmake depend call as it updates the dependencies of the kernel. Rerun bmake depend if/when you change header file inclusions, or after re-running config.
-9) bmake and bmake install need to be run if you want to recompile the kernel. This should probably be done after any changes to the kernel source code. I believe if you rerun bmake depend, you are supposed to recompile the kernel as well. bmake install copies over the binaries to their destination. This should be run after bmake which builds and prepares files to be moved to the destination. 
-10) I would add it to the operations menu. To be able to do that, I would add a new function similar to cmd_shell in menu.c that takes no arguements and just prints "hello world" on the shell. The function could look something like this: 
+Code Reading Assignment 
+1) In exception-mips1.S the first line of code that occurs depends on the type of exception. First line could happen on either line 69 if it's a UTLB exception or 87 if it's a general exception. Then both call the common exception function in that method. Common exception performs miscellaneous tasks and also allocates stack space for the trap frame. It also stores the appropriate values in the trap frame. Then it calls mips_trap which is a function in kern/arch/mips/locore/trap.c. mips_trap then has a case statement for each type of exception. If it's a system call, then syscall() is called which is in charge of actually performing the system call.
+A case of an interrupt is handled differently. The interrupt handler is mainbus_interrupt(). 
+
+2) A system call is invoked from user programs from userland/lib/libc/arch/mips/syscalls-mips.S. the method__syscall then calls syscall which invokes a system call for the user program.
+
+3) The libraries that are shared by the kernel and the user processes are stored in the common folder and the ones specific to the user processes are under userland/include/libc
+
+4) The configure file configures the target hardware, target machine and also the OSTree. You would want to rerun it if you are changing the mode between optimize and debug. moving the directory of your OStree, the hardware or the machine.
+
+5) Each device handles memory allocation differently as well as process allocation to different processors. The functions in the assembly code that are dealing with registers and memory have to be machine dependent. The seperation is necessary so the machine-independent code could be usable across all devices.
+
+6) there are 37 uint32_t variabes in trapframe.h which corresponds to 4*37 = 148 bytes. It has to be this big to be able to store information regarding the function that was interrupted, so it can safely return and continue execution after the interruption is finished.
+
+7) The installation guide mentions that this file only needs to be rerun if there are any changes to the kernel config, conf.kern, adding new source files to the build, or adding new build options. 
+
+8) According to the installation guid, one should run bmake depend when they change header inclustions or after re-running config. 
+
+9) bmake builds and prepares files to be moved to destination and bmake install actually copies over the binaries to their destination. One should rerun the two if theey want to recompile the kernel. This should be done after any changes to the kernel source code. If you run config and bmake depend again, there is a high chance that you want to rerun this as well.
+
+10) I would add it to the operations menu.
+To be able to do that
+- I would add a new function similar to cmd_shell in menu.c that just prints "hello world" on the shell. The function could look something like this: 
 /*
  * Command for printing hello world.
  */
@@ -58,13 +71,17 @@ cmd_hello_world(int nargs, char **args)
 	return 0;
 }
 
-then, I would add this method to the command table, cmdtable. { "helloworld", cmd_hello_world } which calls this command if the user inputs helloworld. And as the last step I would add it to the operations menu to let the user know they can use this command. I would add something like [helloworld] Prints Hello World to the opsmenu.
-11) We are using MIPS architecture and assembly language and as it turns out this architecture is not compatible with our current devices. 
-12) main is called from crt0.S and also the return value is taken care of in this file. The return value of main is stored in v0 register, then also it's copied to s0 register just in case exit() returns and also add it to a0 so it's the argument to exit.
+- then, I would add this method to the command table, cmdtable. { "helloworld", cmd_hello_world } which calls this command if the user inputs helloworld. 
+- And as the last step I would add it to the operations menu. I would add something like [helloworld] Prints Hello World to the opsmenu. This makes the command actually appear to the user.
+
+11) We are using MIPS architecture and assembly language and as it turns out this architecture is not compatible with our current devices.
+
+12) main is called from userland/lib.crt0/mips/crt0.S and also the return value is taken care of in this file. The return value of main is stored in v0 register, then it's also copied to s0 register just in case exit() returns and also add it to a0 so it's the argument to exit.
+
 13) 
 1) I would start from userland/bin/new_syscall. There needs to be the new_syscall.c file and the Makefile. 
 2) In new_syscall.c, I'd have a main function that then calls a system call called new_syscall.
-3) This new system call definition needs to be added to stat.h.
+3) This new system call prototype needs to be added to stat.h.
 4) On the kernel side I'd have to add new_syscall to kern/include/syscall.h and also assign a new system call number to it in kern/include/kern/syscall.h. I also have to add a new file to the kern/syscall directory that implements the system call. 
 5) In syscall.c I'd have to add a new case statement which calls the new_syscall method that I have already implemented if the system call number matches the defined system call number in syscall.h
 
@@ -75,8 +92,8 @@ then, I would add this method to the command table, cmdtable. { "helloworld", cm
 	breakpoint already hit 1 time
 2       breakpoint     keep y   0x80014608 in cmd_mainmenu at ../../main/menu.c:519
 	breakpoint already hit 1 time
-17) 
-18) in start.S
+17) the invocation is done from start.S jal kmain which takes us to hthe main.c file with the kmain function. Before that however, 
+18) in start.S the loader sets up a boot stack for the first time and then the kernel loads at virtual address 0x80000200. After some memory manipulation, it then starts the kernel stack. It then sets up the stack frame on the real kernel stack. Then after all the setup it calls the kernel main function that takes it to the c code.
 (gdb) n
 215	   jal kmain
 

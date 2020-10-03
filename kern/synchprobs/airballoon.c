@@ -7,7 +7,7 @@
 #include <test.h>
 #include <synch.h>
 
-#define N_LORD_FLOWERKILLER 8
+#define N_LORD_FLOWERKILLER 1
 #define NROPES 16
 static volatile int ropes_left = NROPES;
 
@@ -17,11 +17,12 @@ struct rope {
 	int rp_number;
 };
 
-/* Initialize array of ropes */
+/* Initialize array of ropes  and array of pointers to the ropes, stakes */
 struct rope ropes[NROPES];
+struct rope *stakes[NROPES];
 
 static
-bool initialize_rope_array(){
+bool initialize_data(){
 
 	for (int i=0; i < NROPES; i++){
 		struct rope *rp;
@@ -35,14 +36,13 @@ bool initialize_rope_array(){
 		rp->rp_cut = false;
 
 		ropes[i] = *rp;
+		stakes[i] = &ropes[i];
 	}
 
 	return true;
 }
 
 /* Synchronization primitives */
-
-struct spinlock *sp;
 
 /*
  * Describe your design and any invariants or locking protocols
@@ -54,11 +54,12 @@ static
 void
 dandelion(void *p, unsigned long arg)
 {
-	(void)p;
+
 	(void)arg;
 
 	int index;
 	struct lock *ropes_lk = p;
+
 	kprintf("Dandelion thread starting\n");
 
 	while(ropes_left > 0) {
@@ -68,51 +69,71 @@ dandelion(void *p, unsigned long arg)
 		if (!ropes[index].rp_cut) {
 			ropes[index].rp_cut = true;
 			ropes_left--;
-			kprintf("rope %d cut is %d\n", index, ropes[index].rp_cut);
+
 			kprintf("Dandelion severed rope %d\n", index);
 		}
 		lock_release(ropes_lk);
 	}
 
-	kprintf("Dandelion thread is done!\n");
+	kprintf("Dandelion thread done\n");
 	thread_yield();
 }
 
-// static
-// void
-// marigold(void *p, unsigned long arg)
-// {
-// 	(void)p;
-// 	(void)arg;
+static
+void
+marigold(void *p, unsigned long arg)
+{
+	(void)arg;
+	(void)p;
 
-// 	kprintf("Marigold thread starting\n");
+	struct lock *ropes_lk = p;
+	int index;
 
-// 	/* Implement this function */
-// }
+	kprintf("Marigold thread starting\n");
 
-// static
-// void
-// flowerkiller(void *p, unsigned long arg)
-// {
-// 	(void)p;
-// 	(void)arg;
+	while(ropes_left > 0) {
+		index = random() % NROPES;
 
-// 	kprintf("Lord FlowerKiller thread starting\n");
+		lock_acquire(ropes_lk);
+		if (!stakes[index]->rp_cut) {
+			stakes[index]->rp_cut = true;
+			ropes_left--;
 
-// 	/* Implement this function */
-// }
+			kprintf("Marigold severed rope %d from stake %d\n", stakes[index]->rp_number,index);
+		}
+		lock_release(ropes_lk);
+	}
 
-// static
-// void
-// balloon(void *p, unsigned long arg)
-// {
-// 	(void)p;
-// 	(void)arg;
+	kprintf("Marigold thread done\n");
+	thread_yield();
+}
 
-// 	kprintf("Balloon thread starting\n");
+static
+void
+flowerkiller(void *p, unsigned long arg)
+{
+	(void)p;
+	(void)arg;
 
-// 	/* Implement this function */
-// }
+	kprintf("Lord FlowerKiller thread starting\n");
+
+	/* Implement this function */
+}
+
+static
+void
+balloon(void *p, unsigned long arg)
+{
+	(void)p;
+	(void)arg;
+
+	kprintf("Balloon thread starting\n");
+
+	while(ropes_left>0);
+	kprintf("Balloon freed and Prince Dandelion escapes!\n");
+	kprintf("Balloon thread done\n");
+	thread_yield();
+}
 
 
 // Change this function as necessary
@@ -123,34 +144,34 @@ airballoon(int nargs, char **args)
 	(void)args;
 	(void)ropes_left;
 
-	int err = 0;
+	int err = 0, i;
 
 	struct lock *ropes_lk;
 	ropes_lk = lock_create("ropes-array-lock");
 
-	while(!initialize_rope_array());
+	while(!initialize_data());
 
-	// err = thread_fork("Marigold Thread",
-	// 		  NULL, marigold, NULL, 0);
-	// if(err)
-	// 	goto panic;
+	err = thread_fork("Marigold Thread",
+			  NULL, marigold, (struct lock *)ropes_lk, 0);
+	if(err)
+		goto panic;
 
 	err = thread_fork("Dandelion Thread",
 			  NULL, dandelion, (struct lock *)ropes_lk, 0);
 	if(err)
 		goto panic;
 
-	// for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
-	// 	err = thread_fork("Lord FlowerKiller Thread",
-	// 			  NULL, flowerkiller, NULL, 0);
-	// 	if(err)
-	// 		goto panic;
-	// }
+	for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
+		err = thread_fork("Lord FlowerKiller Thread",
+				  NULL, flowerkiller, NULL, 0);
+		if(err)
+			goto panic;
+	}
 
-	// err = thread_fork("Air Balloon",
-	// 		  NULL, balloon, NULL, 0);
-	// if(err)
-	// 	goto panic;
+	err = thread_fork("Air Balloon",
+			  NULL, balloon, NULL, 0);
+	if(err)
+		goto panic;
 
 	goto done;
 panic:

@@ -7,9 +7,11 @@
 #include <test.h>
 #include <synch.h>
 
-#define N_LORD_FLOWERKILLER 1
+#define N_LORD_FLOWERKILLER 2
 #define NROPES 16
 static volatile int ropes_left = NROPES;
+
+static volatile int active_threads = N_LORD_FLOWERKILLER + 3;
 
 /* Data structures for rope mappings */
 struct rope {
@@ -19,7 +21,8 @@ struct rope {
 
 /* Initialize array of ropes  and array of pointers to the ropes, stakes */
 struct rope ropes[NROPES];
-struct rope *stakes[NROPES];
+/* Volatile since stakes are accessed by all FlowerKillers */
+volatile struct rope *stakes[NROPES];
 
 static
 bool initialize_data(){
@@ -43,6 +46,7 @@ bool initialize_data(){
 }
 
 /* Synchronization primitives */
+struct lock*active_thread_lk;
 
 /*
  * Describe your design and any invariants or locking protocols
@@ -76,6 +80,9 @@ dandelion(void *p, unsigned long arg)
 	}
 
 	kprintf("Dandelion thread done\n");
+	lock_acquire(active_thread_lk);
+	active_threads--;
+	lock_release(active_thread_lk);
 	thread_yield();
 }
 
@@ -105,7 +112,18 @@ marigold(void *p, unsigned long arg)
 	}
 
 	kprintf("Marigold thread done\n");
+	lock_acquire(active_thread_lk);
+	active_threads--;
+	lock_release(active_thread_lk);
 	thread_yield();
+}
+
+static
+void
+switch_ropes(int stake_index_1, int stake_index_2){
+	struct rope temp_rope = *stakes[stake_index_1];
+	*stakes[stake_index_1] = *stakes[stake_index_2];
+	*stakes[stake_index_2] = temp_rope;
 }
 
 static
@@ -115,9 +133,40 @@ flowerkiller(void *p, unsigned long arg)
 	(void)p;
 	(void)arg;
 
+	struct lock *ropes_lk = p;
+	// the index of the stakes that will be swapped
+	int sk_index_1, sk_index_2;
+
 	kprintf("Lord FlowerKiller thread starting\n");
 
-	/* Implement this function */
+	while(ropes_left > 1){
+	get_random_index:
+		sk_index_1 = random() % NROPES;
+		sk_index_2 = random() % NROPES;
+
+		if (sk_index_1 != sk_index_2) {
+			lock_acquire(ropes_lk);
+			/* check if ropes are severed */
+			if (stakes[sk_index_1]->rp_cut && stakes[sk_index_1]->rp_cut) {
+				lock_release(ropes_lk);
+				goto get_random_index;
+			}
+			/* switch ropes */
+			switch_ropes(sk_index_1, sk_index_2);
+			kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[sk_index_2]->rp_number, sk_index_1, sk_index_2);
+			kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[sk_index_1]->rp_number, sk_index_2, sk_index_1);
+			lock_release(ropes_lk);
+		}
+		else
+			goto get_random_index;
+		
+	}
+
+	kprintf("Lord FlowerKiller thread done\n");
+	lock_acquire(active_thread_lk);
+	active_threads--;
+	lock_release(active_thread_lk);
+	thread_yield();
 }
 
 static
@@ -129,9 +178,13 @@ balloon(void *p, unsigned long arg)
 
 	kprintf("Balloon thread starting\n");
 
-	while(ropes_left>0);
+	while(ropes_left > 0);
+
 	kprintf("Balloon freed and Prince Dandelion escapes!\n");
 	kprintf("Balloon thread done\n");
+	lock_acquire(active_thread_lk);
+	active_threads--;
+	lock_release(active_thread_lk);
 	thread_yield();
 }
 
@@ -147,7 +200,9 @@ airballoon(int nargs, char **args)
 	int err = 0, i;
 
 	struct lock *ropes_lk;
+
 	ropes_lk = lock_create("ropes-array-lock");
+	active_thread_lk = lock_create("active-thread-lock");
 
 	while(!initialize_data());
 
@@ -163,7 +218,7 @@ airballoon(int nargs, char **args)
 
 	for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
 		err = thread_fork("Lord FlowerKiller Thread",
-				  NULL, flowerkiller, NULL, 0);
+				  NULL, flowerkiller, (struct lock *)ropes_lk, 0);
 		if(err)
 			goto panic;
 	}
@@ -179,6 +234,13 @@ panic:
 	      strerror(err));
 
 done:
-	// lock_destroy(ropes_lk);
+	while(active_threads > 0);
+	kprintf("WE ARE DONE\n");
 	return 0;
 }
+ /* 
+ bmake does not work properly
+ lock shared counter
+ more fine grained lock??
+ clear out the kernel and variables
+ */

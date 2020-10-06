@@ -159,6 +159,7 @@ marigold(void *p, unsigned long arg)
 	lock_release(active_thread_lk);
 	thread_yield();
 }
+
 /*
  * Switches ropes attached to two given stakes in *stakes
  */

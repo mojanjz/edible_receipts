@@ -1,6 +1,16 @@
 /*
  * Driver code for airballoon problem
  */
+
+
+/* I am getting three types of outcomes as of now when adding flowerkiller to the mix, without it the program works as expected
+ * 1. KASSERT error for when a lock that already owns the lock is trying to reacquire the lock, this only happens as soon as flowerkiller is introduced
+ * My guess is that during the release of two locks in flowerkiller after the first release, the thread goes to sleep and is starved. So the release is not done properly
+ * 2. Deadlock: sometimes the program encounters a deadlock, I have tried debugging it but no luck
+ * 3. Sometimes it works fine, and balloon is freed as expected.
+ */
+
+
 #include <types.h>
 #include <lib.h>
 #include <thread.h>
@@ -8,7 +18,7 @@
 #include <synch.h>
 #include <current.h>
 
-#define N_LORD_FLOWERKILLER 8
+#define N_LORD_FLOWERKILLER 1
 #define NROPES 16
 static volatile int ropes_left = NROPES;
 
@@ -70,8 +80,8 @@ bool initialize_data(){
 			return false;
 		}
 		/* give each lock an appropriate name */
-		char rp_lock_name[10];
-		snprintf(rp_lock_name, 10, "rp-lock-%d", i);
+		char rp_lock_name[NROPES];
+		snprintf(rp_lock_name, NROPES, "rp-lock-%d", i);
 		rp->rp_lock = lock_create(rp_lock_name);
 
 		rp->rp_number = i;
@@ -200,7 +210,8 @@ yield_thread:
  */
 static
 void
-switch_ropes(int stake_index_1, int stake_index_2){
+switch_ropes(int stake_index_1, int stake_index_2)
+{
 	struct rope temp_rope = *stakes[stake_index_1];
 	*stakes[stake_index_1] = *stakes[stake_index_2];
 	*stakes[stake_index_2] = temp_rope;
@@ -230,7 +241,17 @@ flowerkiller(void *p, unsigned long arg)
 		/* The second condition is added to avoid a deadlock situation where two flowerkiller threads are waiting on each others lock */
 		if (sk_index_1 != sk_index_2 && stakes[sk_index_1]->rp_number < stakes[sk_index_2]->rp_number) { // optimization, don't switch if the two indices are the same
 			lock_acquire(stakes[sk_index_1]->rp_lock);
+
+			/* To avoid the KASSERT similar to Dandelion and Marigold */
+			if (!lock_do_i_hold(stakes[sk_index_1]->rp_lock))
+				goto yield_thread;
+
 			lock_acquire(stakes[sk_index_2]->rp_lock);
+
+			if(!lock_do_i_hold(stakes[sk_index_2]->rp_lock)) {
+				lock_release(stakes[sk_index_1]->rp_lock); // clean up before yield
+				goto yield_thread;
+			}
 
 			/* Check if ropes are severed, if yes yield, if no swap them */
 			if (!stakes[sk_index_1]->rp_cut && !stakes[sk_index_1]->rp_cut) {
@@ -245,9 +266,9 @@ flowerkiller(void *p, unsigned long arg)
 
 			} 
 			else {
+				/* The order of lock release is different if the swap has not happened, the inner lock should be released first */
 				lock_release(stakes[sk_index_2]->rp_lock);
 				lock_release(stakes[sk_index_1]->rp_lock);
-				kprintf("second lock released %d\n", stakes[sk_index_1]->rp_number);
 			}
 		}
 yield_thread:		

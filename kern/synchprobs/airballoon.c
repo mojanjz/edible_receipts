@@ -6,6 +6,7 @@
 #include <thread.h>
 #include <test.h>
 #include <synch.h>
+#include <current.h>
 
 #define N_LORD_FLOWERKILLER 8
 #define NROPES 16
@@ -17,28 +18,32 @@ static volatile int active_threads = N_LORD_FLOWERKILLER + 3;
 
 /* 
  * Struct that refers to a rope
- * rp_cut: true for severed rope
- *         false for unsevered rope
- * rp_number: fixed number that refers to the rope
+ * rp_cut: True for severed rope
+ *         False for unsevered rope
+ * rp_number: Fixed number that refers to the rope
+ * rp_lock: Lock associated with each rope
+ * This lock is used everytime the rope is accessed by the hook or the stake for read or write
+ * This is because read from or write to each rope should be atomic
  */
 struct rope {
 	volatile bool rp_cut;
 	int rp_number;
+	struct lock *rp_lock;
 };
 
 /* Synchronization primitives */
 
 /* 
- * active_thread_lk is used everytime active_threads is decrements
+ * active_thread_lk is used everytime active_threads is decremented
  * This is used to ensure no race condition will lead to an incorrect value for this variable
  * Reading from this variable however does not require a lock primitive
  */
 static struct lock *active_thread_lk;
 
 /* 
- * ropes_lk is used everytime ropes array or stakes array are accessed for read or write 
- * This is because reading from and writing to ropes should be atomic to avoid any race condition
- * Not locking the rope array would lead to multiple agents swapping or severing ropes at the same time
+ * ropes_lk is used everytime rope_left variable is decremented
+ * This is used to ensure that no race condition will lead to an incorrect number of ropes left
+ * Reading from ropes_left variable however does not require a lock primitive
  */
 static struct lock *ropes_lk;
 
@@ -64,9 +69,13 @@ bool initialize_data(){
 		if (rp == NULL) {
 			return false;
 		}
+		/* give each lock an appropriate name */
+		char rp_lock_name[10];
+		snprintf(rp_lock_name, 10, "rp-lock-%d", i);
+		rp->rp_lock = lock_create(rp_lock_name);
 
 		rp->rp_number = i;
-		rp->rp_cut = false;
+		rp->rp_cut = false; // Initially no rope has been severed
 
 		ropes[i] = rp;
 		stakes[i] = ropes[i];
@@ -82,7 +91,7 @@ bool initialize_data(){
  */
 
 /*
- * Dandelion checks ropes_left for any unsevered rope
+ * Dandelion checks ropes_left to ensure not all ropes have been severed
  * It then randomly checks a certain rope and severs it
  * If it has been severed, it does nothing
  * Otherwise it severs the rope, decrements ropes_left
@@ -103,14 +112,30 @@ dandelion(void *p, unsigned long arg)
 	while(ropes_left > 0) {
 		index = random() % NROPES;
 
-		lock_acquire(ropes_lk);
+		lock_acquire(ropes[index]->rp_lock);
+
+		/* I was having KASSERT issues where lock_release was being executed by a thread
+		 * that was not the owner of the thread. To avoid that, I added lock_do_i_hold to all
+		 * threads that use the locks on the ropes. I'm guessing somehow a race condition causes this
+		 * thread to be run non atomically as soon as flowerkiller is introduced
+		 */
+		if(!lock_do_i_hold(ropes[index]->rp_lock)) {
+			goto yield_thread;
+		}
+
 		if (!ropes[index]->rp_cut) {
 			ropes[index]->rp_cut = true;
 			kprintf("Dandelion severed rope %d\n", index);
-			ropes_left--;
+			lock_release(ropes[index]->rp_lock);
+	
+			lock_acquire(ropes_lk);
+			ropes_left--;  // changing ropes_left must be atomic
+			lock_release(ropes_lk);
 		}
+		else
+			lock_release(ropes[index]->rp_lock);
 
-		lock_release(ropes_lk);
+yield_thread:
 		thread_yield();
 	}
 
@@ -142,14 +167,24 @@ marigold(void *p, unsigned long arg)
 	while(ropes_left > 0) {
 		index = random() % NROPES;
 
-		lock_acquire(ropes_lk);
+
+		lock_acquire(stakes[index]->rp_lock);
+		/* Added to avoid KASSERT error on lock release similar to the comment in Dandelion */
+		if (!lock_do_i_hold(stakes[index]->rp_lock))
+			goto yield_thread;
+
 		if (!stakes[index]->rp_cut) {
 			stakes[index]->rp_cut = true;
 			kprintf("Marigold severed rope %d from stake %d\n", stakes[index]->rp_number,index);
-			ropes_left--;
-		}
+			lock_release(stakes[index]->rp_lock);
 
-		lock_release(ropes_lk);
+			lock_acquire(ropes_lk);
+			ropes_left--;
+			lock_release(ropes_lk);
+		}
+		else
+			lock_release(stakes[index]->rp_lock);
+yield_thread:
 		thread_yield();
 	}
 
@@ -174,8 +209,8 @@ switch_ropes(int stake_index_1, int stake_index_2){
 /*
  * Flowerkiller randomly picks two stakes, checks if the ropes are severed
  * If at least one of them is severed, it does nothing
- * Otherwise, it locks the rope array and switches the stakes
- * The lock is necessary since Marigold accesses ropes via stakes
+ * Otherwise, it locks both ropes and switches the stakes
+ * The locks are necessary since Marigold accesses ropes via stakes
  * Exit condition: At least two ropes are left to be switched
  */
 static
@@ -189,32 +224,35 @@ flowerkiller(void *p, unsigned long arg)
 
 	kprintf("Lord FlowerKiller thread starting\n");
 
-get_random_index: // this label should be before the while loop to check ropes_left when restarting
 	while(ropes_left > 1){
 		sk_index_1 = random() % NROPES;
 		sk_index_2 = random() % NROPES;
+		/* The second condition is added to avoid a deadlock situation where two flowerkiller threads are waiting on each others lock */
+		if (sk_index_1 != sk_index_2 && stakes[sk_index_1]->rp_number < stakes[sk_index_2]->rp_number) { // optimization, don't switch if the two indices are the same
+			lock_acquire(stakes[sk_index_1]->rp_lock);
+			lock_acquire(stakes[sk_index_2]->rp_lock);
 
-		if (sk_index_1 != sk_index_2) { // optimization, don't switch if the two indices are the same
-			lock_acquire(ropes_lk);
-			/* Check if ropes are severed, if yes go back to the top to try a different index */
-			if (stakes[sk_index_1]->rp_cut || stakes[sk_index_1]->rp_cut) {
-				lock_release(ropes_lk);
-				goto get_random_index;
+			/* Check if ropes are severed, if yes yield, if no swap them */
+			if (!stakes[sk_index_1]->rp_cut && !stakes[sk_index_1]->rp_cut) {
+				/* Switch ropes */
+				switch_ropes(sk_index_1, sk_index_2);
+				kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[sk_index_2]->rp_number, sk_index_1, sk_index_2);
+				kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[sk_index_1]->rp_number, sk_index_2, sk_index_1);
+
+				lock_release(stakes[sk_index_1]->rp_lock);
+				lock_release(stakes[sk_index_2]->rp_lock);
+				goto yield_thread;
+
+			} 
+			else {
+				lock_release(stakes[sk_index_2]->rp_lock);
+				lock_release(stakes[sk_index_1]->rp_lock);
+				kprintf("second lock released %d\n", stakes[sk_index_1]->rp_number);
 			}
-			/* Switch ropes */
-			switch_ropes(sk_index_1, sk_index_2);
-
-			kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[sk_index_2]->rp_number, sk_index_1, sk_index_2);
-			kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[sk_index_1]->rp_number, sk_index_2, sk_index_1);
-
-			lock_release(ropes_lk);
 		}
-		else
-			goto get_random_index;
-		
+yield_thread:		
 		thread_yield();
 	}
-
 	kprintf("Lord FlowerKiller thread done\n");
 	lock_acquire(active_thread_lk);
 	active_threads--;
@@ -260,7 +298,7 @@ airballoon(int nargs, char **args)
 
 	int err = 0, i;
 
-	ropes_lk = lock_create("ropes-array-lock");
+	ropes_lk = lock_create("ropes-array-lock"); // TODO
 	active_thread_lk = lock_create("active-thread-lock");
 
 	while(!initialize_data());
@@ -294,11 +332,15 @@ panic:
 
 done:
 	while(active_threads > 0);
-
+	/* Destroy all locks in use after all threads are done */
 	lock_destroy(ropes_lk);
 	lock_destroy(active_thread_lk);
 
-	/* free up kernel memory after all threads are done */
+	for (int i =0; i < NROPES; i++) {
+		lock_destroy(ropes[i]->rp_lock);
+	}
+
+	/* Free up kernel memory after all threads are done */
 	for (int i = 0; i < NROPES; i++) {
 		KASSERT(ropes[i] != NULL);
 		kfree(ropes[i]);

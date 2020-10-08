@@ -18,7 +18,7 @@
 #include <synch.h>
 #include <current.h>
 
-#define N_LORD_FLOWERKILLER 1
+#define N_LORD_FLOWERKILLER 8
 #define NROPES 16
 static volatile int ropes_left = NROPES;
 

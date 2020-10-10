@@ -14,13 +14,25 @@
 
 8. What is the numerical value of the exception code for a MIPS system call?
 
+
+
 9. How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
+What is an instruction in MIPS, and how is it executed/linked to syscall?
+Is it the same as the calling convention for syscall? If so then 4args*32bits/8(bits/byte) -> I dont think so
+32 bits, 4 bytes
+MIPS register is 32 bits, maybe look to syscalls-mips.S -> syscall function? Referenced in comments of syscall()
 
 10. Why do you "probably want to change" the implementation of kill_curthread()?
+We want to build a function that can kill the current thread when user-level code hits a fatal fault, instead of just panicking and crashing the kernel.  The current implementation,
+just sends the thread into panic with the message "I don't know how to handle this\n". 
 
 11. What would be required to implement a system call that took more than 4 arguments?
+If you wanted to implement a system call that took more than 4 arguments, you would have to store your remaining arguments in the user-level stack.
+Then, they would have to be fetched ysing copyin(), starting at sp+16 to skip the stored registerized values.
 
 12. What is the purpose of the SYSCALL macro?
+The SYSCALL macro is used to load the syscall number into the register v0 (which is the location in which the kernel expects to find it).
+Next, it jumps to the shared syscall code (MIPS syscall ABI).
 
 13. What is the MIPS instruction that actually triggers a system call? (Answer this by reading the source in this directory, not looking somewhere else.)
 

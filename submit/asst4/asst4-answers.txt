@@ -21,6 +21,7 @@ What is an instruction in MIPS, and how is it executed/linked to syscall?
 Is it the same as the calling convention for syscall? If so then 4args*32bits/8(bits/byte) -> I dont think so
 32 bits, 4 bytes
 MIPS register is 32 bits, maybe look to syscalls-mips.S -> syscall function? Referenced in comments of syscall()
+I think its because the register v0 takes the input values.
 
 10. Why do you "probably want to change" the implementation of kill_curthread()?
 We want to build a function that can kill the current thread when user-level code hits a fatal fault, instead of just panicking and crashing the kernel.  The current implementation,
@@ -35,9 +36,23 @@ The SYSCALL macro is used to load the syscall number into the register v0 (which
 Next, it jumps to the shared syscall code (MIPS syscall ABI).
 
 13. What is the MIPS instruction that actually triggers a system call? (Answer this by reading the source in this directory, not looking somewhere else.)
+syscall (syscalls-mips.S, line )
 
-14. After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value. Thus, lseek() takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg2), and needs to return a 64-bit offset value. In void syscall(struct trapframe *tf) where will you find each of the three arguments (in which registers) and how will you return the 64-bit offset?
+14. After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value.
+Thus, lseek() takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg2), and needs to return a 64-bit offset value. In void syscall(struct trapframe *tf) where
+will you find each of the three arguments (in which registers) and how will you return the 64-bit offset?
+ arg0 (32bit):
+ arg1 (64bit):
+ arg2 (32bit):
+ We will return the 64-bit offset in registers v0 & v1 (since 64 bit value).
 
-15. As you were reading the code in runprogram.c and loadelf.c, you probably noticed how the kernel manipulates the files. Which kernel function is called to open a file? Which macro is called to read the file? What about to write a file? Which data structure is used in the kernel to represent an open file? 
+15. As you were reading the code in runprogram.c and loadelf.c, you probably noticed how the kernel manipulates the files. Which kernel function is called to open a file? Which macro is
+called to read the file? What about to write a file? Which data structure is used in the kernel to represent an open file? 
+The kernel function called to open a file is vfs_open().
+The macro VOP_READ is called to read the file.
+The macro VOP_WRITE is called to write a file.
+The data structure vnode is used in the kernel as an abstract representation of an open file.
+
 
 16. What is the purpose of VOP_INCREF and VOP_DECREF?
+They are used to respectively increment and decrement the reference count for a specific vnode.  I believe the reference count keeps track of the number of times a file in referenced in the code.

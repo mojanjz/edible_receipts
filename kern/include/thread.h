@@ -39,6 +39,7 @@
 #include <array.h>
 #include <spinlock.h>
 #include <threadlist.h>
+#include <filedescriptor.h>
 
 struct cpu;
 
@@ -55,6 +56,7 @@ struct cpu;
 /* Macro to test if two addresses are on the same kernel stack */
 #define SAME_STACK(p1, p2)     (((p1) & STACK_MASK) == ((p2) & STACK_MASK))
 
+#define FILE_TABLE_SIZE 5 /* TODO: Decide on a number here! */
 
 /* States a thread can be in. */
 typedef enum {
@@ -73,6 +75,7 @@ struct thread {
 	char *t_name;			/* Name of this thread */
 	const char *t_wchan_name;	/* Name of wait channel, if sleeping */
 	threadstate_t t_state;		/* State this thread is in */
+
 
 	/*
 	 * Thread subsystem internal fields.
@@ -106,6 +109,7 @@ struct thread {
 	 */
 
 	/* add more here as needed */
+	struct filedescriptor *t_filetable [FILE_TABLE_SIZE];
 };
 
 /*

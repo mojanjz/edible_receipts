@@ -110,19 +110,24 @@ syscall(struct trapframe *tf)
 		break;
 
 		case SYS_open:
-		retval = sys_open((userptr_t)tf->tf_a0,
-					tf->tf_a1);
+		err = sys_open((userptr_t)tf->tf_a0,
+					tf->tf_a1,
+					(mode_t) tf->tf_a2,
+					&retval);
 		break;
 
 		case SYS_lseek:
-
-		retval = sys_lseek(tf->tf_a0, tf->tf_a2, tf->tf_a3, tf->tf_sp+16);
+		err = sys_lseek(tf->tf_a0, 
+					tf->tf_a2, tf->tf_a3,
+					tf->tf_sp+16,
+					&retval);
 		break;
 
 		break;
 	    case SYS___getcwd:
-		retval = sys___getcwd((userptr_t)tf->tf_a0,
-							  (size_t) tf->tf_a1);
+		err = sys___getcwd((userptr_t)tf->tf_a0,
+							  (size_t) tf->tf_a1,
+							  &retval);
 		break;
 
 	    default:
@@ -130,11 +135,6 @@ syscall(struct trapframe *tf)
 		err = ENOSYS;
 		break;
 	}
-
-	if(retval == -1)
-		err = -1;
-	else 
-		err = 0;
 
 	if (err) {
 		/*

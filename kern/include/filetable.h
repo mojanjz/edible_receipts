@@ -36,12 +36,14 @@
 
 #include <file_entry.h>
 #include <limits.h>
+#include <types.h>
 
 /* File table structure. */
 struct filetable {
-    struct file_entry *ft_file_entries[OPEN_MAX];
+    struct file_entry *ft_file_entries[__OPEN_MAX];
 };
 
 int filetable_init(void);
+int file_open(char *filename, int flags, mode_t mode, int *retval);
 
 #endif

@@ -33,9 +33,10 @@
 #include <syscall.h>
 
 int
-sys___getcwd(userptr_t buf, size_t buflen)
+sys___getcwd(userptr_t buf, size_t buflen, int *retval)
 {   
     (void) buf;
     (void) buflen;
+    (void) retval;
     return 4;
 }

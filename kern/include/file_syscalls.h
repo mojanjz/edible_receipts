@@ -31,7 +31,6 @@
 #define _FILE_SYSCALLS_H_
 
 
-int sys_open(userptr_t filename, int flags);
-int sys_lseek(int fd, int higher_pos, int lower_pos, int whence);
-
+int sys_open(userptr_t filename, int flags, mode_t mode, int *retval);
+int sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval);
 #endif

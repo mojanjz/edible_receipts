@@ -378,6 +378,7 @@ file      syscall/runprogram.c
 file      syscall/time_syscalls.c
 file      syscall/directory_syscalls.c
 file      syscall/file_syscalls.c
+file      syscall/filetable.c
 
 #
 # Startup and initialization

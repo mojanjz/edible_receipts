@@ -122,7 +122,7 @@ filetable_init(void) {
     /* Initialize file entries in the file table*/
     for (int fd = 0; fd < __OPEN_MAX; fd++) {
         if (fd < 3) {
-            // TODO: THE FIRST THREE NEED TO BE OPENED ALREADY
+            // TODO: THE FIRST THREE NEED TO BE OPENED HERE
         } else {
             ft->ft_file_entries[fd] = NULL;
         }

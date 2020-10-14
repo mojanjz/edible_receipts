@@ -31,19 +31,40 @@
 #include <clock.h>
 #include <copyinout.h>
 #include <syscall.h>
+#include <kern/errno.h>
+#include <kern/limits.h>
+#include <filetable.h>
+#include <lib.h>
+
 int
-sys_open(userptr_t filename, int flags){
-    (void)filename;
-    (void)flags;
-    return 4;
+sys_open(userptr_t filename, int flags, mode_t mode, int *retval){
+    int err = 0;
+    char *kernel_filename;
+
+    kernel_filename = (char *)kmalloc(__PATH_MAX);
+    if (kernel_filename == NULL)
+        return ENOMEM;
+
+    /* copyin the filename */
+    err = copyinstr(filename, kernel_filename, __PATH_MAX, NULL);
+    if (err) {
+        kfree(kernel_filename);
+        return err;
+    }
+
+    err = file_open(kernel_filename, flags, mode, retval);
+
+    kfree(kernel_filename);
+    return 0;
 }
 
 int
-sys_lseek(int fd, int higher_pos, int lower_pos, int whence){
+sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval){
     (void)fd;
     (void)higher_pos;
     (void)lower_pos;
     (void)whence;
+    (void)retval;
 
     // off_t pos = tf->tf_a2 << 32 | tf->tf_a3;
     // int whence;

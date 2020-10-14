@@ -30,7 +30,7 @@
 #ifndef _DIRECTORY_SYSCALLS_H_
 #define _DIRECTORY_SYSCALLS_H_
 
-int sys___getcwd(userptr_t buf, size_t buflen);
+int sys___getcwd(userptr_t buf, size_t buflen, int *retval);
 
 #endif
 

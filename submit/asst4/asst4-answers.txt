@@ -1,22 +1,36 @@
 1. What are the ELF magic numbers?
+FROM elf.h
+The 4 bytes of e_indent. Magic numbers are 7f 45('E') 4c(L) 46(F). This can also be retrieved from 
+readelf -h bin/ls | grep Magic
 
 2. What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
+They are all seg_flags. UIO_USERISPACE should be used if some code needs to be transferred (executable file), UIO_USERSPACE should be used if some user process data is being tranfered from the kernel to user space or vice versa. In the code however, it looks like both cases are treated the same and copyin and copyout are used on them.
+You would want to use UIO_SYSSPACE flag if your data transfer request is inside the kernel space and just transfers data within the kernel.
 
 3. Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
+A virtual address (vaddr) user pointer is passed into the function and this is where the memory read actually goes. This is why uio can be allocated on the stack.
 
 4. In runprogram(), why is it important to call vfs_close() before going to usermode?
+vfs_close should be called so that the executable can be accessed again later on by another process. Before switching to user mode, we should make sure we end all processes and vfs_close is one of them.
 
 5. What function forces the processor to switch into usermode? Is this function machine dependent?
+execption_return in exception-mips1.S. I believe it is machine dependent since it's assembly and deals with certain registers and memory allocation. execption_return is called from a trap and also asm_usermode. asm_usermode is called when entering user mode for the first time.
 
 6. In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
+copyin, copyout: copyinout.c
+memmove: string.h it is a built-in C function and located in memmove.c
+This is because copyin and copyout deal with user and kernel address space and are in charge of data transfer between the two whereas memmove is used when the same address space is used whether it's the user or the kernel. copyin and copyout are unsafe function calls that require better error handling in case of failures during the data transfer. copyfail logic is used in this case for that purpose. Another reason to use copyin and copyout is that it checks for off limit addresses pointed by the user pointers that memmove is not capable of.
 
 7. What (briefly) is the purpose of userptr_t?
+user pointer is a pointer to a one-byte struct. It is the way to differentiate between pointers to the user space pointers and regular pointers in the kernel space. It's used in copyin and copyout for data transfer between the two address spaces.
 
 8. What is the numerical value of the exception code for a MIPS system call?
-
-
+from trapframe.h: EX_SYS 8
 
 9. How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
+In syscalls.C on line 141,  we see that the program counter is incremented by four in order to avoid restarting syscall.  This means that a MIPS instruction 
+must be 4 bytes, or 32 bits.
+
 What is an instruction in MIPS, and how is it executed/linked to syscall?
 Is it the same as the calling convention for syscall? If so then 4args*32bits/8(bits/byte) -> I dont think so
 32 bits, 4 bytes
@@ -25,26 +39,26 @@ I think its because the register v0 takes the input values.
 
 10. Why do you "probably want to change" the implementation of kill_curthread()?
 We want to build a function that can kill the current thread when user-level code hits a fatal fault, instead of just panicking and crashing the kernel.  The current implementation,
-just sends the thread into panic with the message "I don't know how to handle this\n". 
+just sends the thread into panic with the message "I don't know how to handle this\n". We want to be able to take action based on the different error codes (for example if its a syscall error).
 
 11. What would be required to implement a system call that took more than 4 arguments?
 If you wanted to implement a system call that took more than 4 arguments, you would have to store your remaining arguments in the user-level stack.
-Then, they would have to be fetched ysing copyin(), starting at sp+16 to skip the stored registerized values.
+Then, they would have to be fetched using copyin(), starting at sp+16 to skip the stored registerized values.
 
 12. What is the purpose of the SYSCALL macro?
 The SYSCALL macro is used to load the syscall number into the register v0 (which is the location in which the kernel expects to find it).
 Next, it jumps to the shared syscall code (MIPS syscall ABI).
 
 13. What is the MIPS instruction that actually triggers a system call? (Answer this by reading the source in this directory, not looking somewhere else.)
-syscall (syscalls-mips.S, line )
+syscall (syscalls.S, line 85).  Note that syscall is also invoked in syscalls-mips.S, but as explained by this file's comments, the contents of syscalls-mips.S are copied over to syscalls.S.
 
 14. After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value.
 Thus, lseek() takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg2), and needs to return a 64-bit offset value. In void syscall(struct trapframe *tf) where
 will you find each of the three arguments (in which registers) and how will you return the 64-bit offset?
- arg0 (32bit):
- arg1 (64bit):
- arg2 (32bit):
- We will return the 64-bit offset in registers v0 & v1 (since 64 bit value).
+ arg0 (32bit): a0
+ arg1 (64bit): a2 (high 32-bit)/a3 (low 32-bit)
+ arg2 (32bit): user-level stack
+We will return the 64-bit offset in registers v0 (high 32-bits) & v1 (low 32-bits).
 
 15. As you were reading the code in runprogram.c and loadelf.c, you probably noticed how the kernel manipulates the files. Which kernel function is called to open a file? Which macro is
 called to read the file? What about to write a file? Which data structure is used in the kernel to represent an open file? 
@@ -55,4 +69,5 @@ The data structure vnode is used in the kernel as an abstract representation of 
 
 
 16. What is the purpose of VOP_INCREF and VOP_DECREF?
-They are used to respectively increment and decrement the reference count for a specific vnode.  I believe the reference count keeps track of the number of times a file in referenced in the code.
+They are used to respectively increment and decrement the reference count for a specific vnode, which keeps track of the number of active clients that a specific vnode has.
+If the refcount becomes 0, then VOP_RECLAIM is called since the vnode is no longer in use.

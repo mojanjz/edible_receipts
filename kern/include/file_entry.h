@@ -33,16 +33,16 @@
 #include <types.h>
 #include <synch.h>
 
-/* File descriptor structure. */
-struct file_entry {
-	/*
-	 * File descriptor internal fields
-	 */
-	struct lock *fe_lock;
-	int fe_status; /* Corresponding to how the file is opened O_RDONLY | O_WRONLY | O_RDWR */
-    off_t fe_offset; /* Corresponding uio for file descriptor */
-    struct vnode *fe_vn; /* Corresponding abstract file representation */
-	char *fe_filename; /* name of the correponding file */	
-};
+// /* File descriptor structure. */
+// struct file_entry {
+// 	/*
+// 	 * File descriptor internal fields
+// 	 */
+// 	struct lock *fe_lock;
+// 	int fe_status; /* Corresponding to how the file is opened O_RDONLY | O_WRONLY | O_RDWR */
+//     off_t fe_offset; /* Corresponding uio for file descriptor */
+//     struct vnode *fe_vn; /* Corresponding abstract file representation */
+// 	char *fe_filename; /* name of the correponding file */	
+// };
 
 #endif

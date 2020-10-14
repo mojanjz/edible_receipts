@@ -83,9 +83,6 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
-	/* file table */
-	proc->p_filetable = NULL;
-
 	return proc;
 }
 

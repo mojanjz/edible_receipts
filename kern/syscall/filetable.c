@@ -3,6 +3,7 @@
 #include <kern/limits.h>
 #include <types.h>
 #include <filetable.h>
+#include <file_entry.h>
 #include <current.h>
 #include <vfs.h>
 
@@ -22,7 +23,7 @@ filetable_init(void) {
 
     }
 
-    curproc->p_filetable = ft;
+    curthread->t_filetable = ft;
 
     return 0;
 }
@@ -34,13 +35,14 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     char buf[32];
     struct vnode *ft_vnode;
 
-    /* Check if flags are right */
-    int how = flags & O_ACCMODE;
-    if (how != O_WRONLY || how != O_RDONLY || how != O_RDWR)
-        return EINVAL;
+    // already checked in vfs_open we hypothetically don't need this
+    // /* Check if flags are right */
+    // int how = flags & O_ACCMODE;
+    // if (how != O_WRONLY || how != O_RDONLY || how != O_RDWR)
+    //     return EINVAL;
     
     /* Find an emptry row in the filetable */
-    struct filetable *filetable = curproc->p_filetable;
+    struct filetable *filetable = curthread->t_filetable;
     int fd = 0;
 
     for (fd = 0; fd < __OPEN_MAX; fd++){

@@ -111,26 +111,4 @@ runprogram(char *progname)
 	return EINVAL;
 }
 
-/* Somehow filtable.c is not recognized here?? Krysten can you look into this?*/
-/* temporarily added the function here */
-int 
-filetable_init(void) {
-    struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable));
-
-    /*TODO: Need to initialize the first three file entries */
-
-    /* Initialize file entries in the file table*/
-    for (int fd = 0; fd < __OPEN_MAX; fd++) {
-        if (fd < 3) {
-            // TODO: THE FIRST THREE NEED TO BE OPENED HERE
-        } else {
-            ft->ft_file_entries[fd] = NULL;
-        }
-
-    }
-
-    curthread->t_proc->p_filetable = ft;
-
-    return 0;
-}
 

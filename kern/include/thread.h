@@ -108,6 +108,7 @@ struct thread {
 	 */
 
 	/* add more here as needed */
+	struct filetable *t_filetable;
 };
 
 /*

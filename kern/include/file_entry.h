@@ -27,16 +27,22 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _FILEDESCRIPTOR_H_
-#define _FILEDESCRIPTOR_H_
+#ifndef _FILE_ENTRY_H_
+#define _FILE_ENTRY_H_
+
+#include <types.h>
+#include <synch.h>
 
 /* File descriptor structure. */
-struct filedescriptor {
+struct file_entry {
 	/*
 	 * File descriptor internal fields
 	 */
-    struct uio *fd_uio; /* Corresponding uio for file descriptor */
-    struct vnode *fd_vn; /* Corresponding abstract file representation */
+	struct lock *fe_lock;
+	int fe_status; /* Corresponding to how the file is opened O_RDONLY | O_WRONLY | O_RDWR */
+    off_t fe_offset; /* Corresponding uio for file descriptor */
+    struct vnode *fe_vn; /* Corresponding abstract file representation */
+	char *fe_filename; /* name of the correponding file */	
 };
 
 #endif

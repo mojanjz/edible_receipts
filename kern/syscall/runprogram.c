@@ -44,6 +44,7 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+#include <filetable.h>
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -97,6 +98,9 @@ runprogram(char *progname)
 		return result;
 	}
 
+	/* Initialize Filetable for the process */
+	filetable_init();
+
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,
@@ -105,5 +109,28 @@ runprogram(char *progname)
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
 	return EINVAL;
+}
+
+/* Somehow filtable.c is not recognized here?? Krysten can you look into this?*/
+/* temporarily added the function here */
+int 
+filetable_init(void) {
+    struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable));
+
+    /*TODO: Need to initialize the first three file entries */
+
+    /* Initialize file entries in the file table*/
+    for (int fd = 0; fd < __OPEN_MAX; fd++) {
+        if (fd < 3) {
+            // TODO: THE FIRST THREE NEED TO BE OPENED ALREADY
+        } else {
+            ft->ft_file_entries[fd] = NULL;
+        }
+
+    }
+
+    curthread->t_proc->p_filetable = ft;
+
+    return 0;
 }
 

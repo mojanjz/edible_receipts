@@ -39,7 +39,6 @@
 #include <array.h>
 #include <spinlock.h>
 #include <threadlist.h>
-#include <filedescriptor.h>
 
 struct cpu;
 
@@ -109,7 +108,6 @@ struct thread {
 	 */
 
 	/* add more here as needed */
-	struct filedescriptor *t_filetable [FILE_TABLE_SIZE];
 };
 
 /*

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013
+ * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
  *	The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,63 +27,21 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _PROC_H_
-#define _PROC_H_
-
 /*
- * Definition of a process.
- *
- * Note: curproc is defined by <current.h>.
+ * All function prototypes and definitions for the open files table
  */
 
-#include <spinlock.h>
-#include <thread.h> /* required for struct threadarray */
-#include <filetable.h>
+#ifndef _FILETABLE_H_
+#define _FILETABLE_H_
 
-struct addrspace;
-struct vnode;
+#include <file_entry.h>
+#include <limits.h>
 
-/*
- * Process structure.
- */
-struct proc {
-	char *p_name;			/* Name of this process */
-	struct spinlock p_lock;		/* Lock for this structure */
-	struct threadarray p_threads;	/* Threads in this process */
-
-	/* VM */
-	struct addrspace *p_addrspace;	/* virtual address space */
-
-	/* VFS */
-	struct vnode *p_cwd;		/* current working directory */
-
-	/* add more material here as needed */
-	struct filetable *p_filetable;
+/* File table structure. */
+struct filetable {
+    struct file_entry *ft_file_entries[OPEN_MAX];
 };
 
-/* This is the process structure for the kernel and for kernel-only threads. */
-extern struct proc *kproc;
+int filetable_init(void);
 
-/* Call once during system startup to allocate data structures. */
-void proc_bootstrap(void);
-
-/* Create a fresh process for use by runprogram(). */
-struct proc *proc_create_runprogram(const char *name);
-
-/* Destroy a process. */
-void proc_destroy(struct proc *proc);
-
-/* Attach a thread to a process. Must not already have a process. */
-int proc_addthread(struct proc *proc, struct thread *t);
-
-/* Detach a thread from its process. */
-void proc_remthread(struct thread *t);
-
-/* Fetch the address space of the current process. */
-struct addrspace *proc_getas(void);
-
-/* Change the address space of the current process, and return the old one. */
-struct addrspace *proc_setas(struct addrspace *);
-
-
-#endif /* _PROC_H_ */
+#endif

@@ -37,6 +37,7 @@
 #include <file_entry.h>
 #include <limits.h>
 #include <types.h>
+#include <kern/fcntl.h>
 
 /* File table structure. */
 struct filetable {

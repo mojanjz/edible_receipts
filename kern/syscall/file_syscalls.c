@@ -33,24 +33,34 @@
 #include <syscall.h>
 #include <kern/errno.h>
 #include <kern/limits.h>
+#include <kern/fcntl.h>
 #include <filetable.h>
 #include <lib.h>
+#include <uio.h>
+#include <current.h>
+#include <vnode.h>
 
 int
-sys_open(userptr_t filename, int flags, mode_t mode, int *retval){
+sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
+{
     int err = 0;
     char *kernel_filename;
+
+    kprintf("made it to sys_open\n");
 
     kernel_filename = (char *)kmalloc(__PATH_MAX);
     if (kernel_filename == NULL)
         return ENOMEM;
 
+    kprintf("sys_open: allocated kernel space for file name\n");
     /* copyin the filename */
     err = copyinstr(filename, kernel_filename, __PATH_MAX, NULL);
     if (err) {
         kfree(kernel_filename);
         return err;
     }
+
+    kprintf("sys_open: got the filename %s\n", kernel_filename);
 
     err = file_open(kernel_filename, flags, mode, retval);
 
@@ -59,7 +69,8 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval){
 }
 
 int
-sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval){
+sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
+{
     (void)fd;
     (void)higher_pos;
     (void)lower_pos;
@@ -71,4 +82,57 @@ sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval){
     // size_t size = sizeof(whence);
     // copyin((const_userptr_t) tf->tf_sp+16, *whence, size);
     return 4;
+}
+
+int
+sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
+{   
+    int err = 0;
+    struct filetable *ft = curthread->t_filetable;
+    struct iovec iov;
+    struct uio ku;
+    char *kernel_buf; // where buf is copied to
+
+    kprintf("made it to sys_write\n");
+
+    /* Check for invalid file descriptor or unopened files */
+
+    if(fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) {
+        return EBADF;
+    }
+
+    kprintf("made it to sys_write\n");
+
+    struct file_entry *fe = ft->ft_file_entries[fd];
+    int how = fe->fe_status & O_ACCMODE;
+
+    /* File has not been opened for writing */
+    if (how != O_WRONLY || how != O_RDWR) {
+        return EBADF;
+    }
+
+    kernel_buf = (char *)kmalloc(__PATH_MAX);
+    if (kernel_buf == NULL)
+        return ENOMEM;
+
+    kprintf("sys_write: flags weren't bad, file was open\n");
+    /* copyin the buffer to kernel buffer */
+    err = copyinstr(buf, kernel_buf, nbytes, NULL);
+    if (err) {
+        kfree(kernel_buf);
+        return err;
+    }
+
+    off_t pos = fe->fe_offset;
+    uio_kinit(&iov, &ku, kernel_buf, nbytes, pos, UIO_WRITE);
+    err = VOP_WRITE(fe->fe_vn, &ku);
+    if (err) {
+        kprintf("%s: Write error: %s\n", fe->fe_filename, strerror(err));
+        return err;
+    }
+
+    *retval = ku.uio_offset - pos;
+
+    fe->fe_offset += *retval;
+    return 0;
 }

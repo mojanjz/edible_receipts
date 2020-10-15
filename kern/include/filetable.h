@@ -42,6 +42,7 @@
 /* File table structure. */
 struct filetable {
     struct file_entry *ft_file_entries[__OPEN_MAX];
+    struct lock *ft_lock; 
 };
 
 int filetable_init(void);

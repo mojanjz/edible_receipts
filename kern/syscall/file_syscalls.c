@@ -39,7 +39,10 @@
 #include <uio.h>
 #include <current.h>
 #include <vnode.h>
-
+/*
+ * Copies the filename from userpointer buffer to a kernle buffer
+ * Calls file_open that does the actual opening
+ */
 int
 sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
 {
@@ -92,32 +95,15 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     struct uio ku;
     char *kernel_buf; // where buf is copied to
 
-    // kprintf("made it to sys_write\n");
-
     /* Check for invalid file descriptor or unopened files */
-
     if(fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) {
         return EBADF;
     }
 
-    // kprintf("sys_write: fd %d was valid, file was open\n", fd);
-
-    struct file_entry *fe = ft->ft_file_entries[fd];
-    int how = fe->fe_status & O_ACCMODE;
-
-    /* File has not been opened for writing */
-    if (how != O_WRONLY && how != O_RDWR) {
-        return EBADF;
-    }
-
-    // kprintf("sys_write: flags were okay \n");
-
-    // nbytes + 1 because it's 0 terminated. 
-    kernel_buf = (char *)kmalloc(nbytes+1);
+    kernel_buf = (char *)kmalloc(nbytes+1); // nbytes + 1 because it's 0 terminated. 
     if (kernel_buf == NULL)
         return ENOMEM;
 
-    // kprintf("sys_write: made a kernel buff\n");
     /* copyin the buffer to kernel buffer */
     err = copyinstr(buf, kernel_buf, nbytes+1, NULL);
     if (err) {
@@ -126,13 +112,22 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
         return err;
     }
 
-    // kprintf("sys_write: got the kernel buffer: %s\n", kernel_buf);
+    struct file_entry *fe = ft->ft_file_entries[fd];
+    lock_acquire(fe->fe_lock);
+    int how = fe->fe_status & O_ACCMODE;
+
+    /* Check if file is opened for writing */
+    if (how != O_WRONLY && how != O_RDWR) {
+        lock_release(fe->fe_lock);
+        return EBADF;
+    }
 
     off_t pos = fe->fe_offset;
     uio_kinit(&iov, &ku, kernel_buf, nbytes, pos, UIO_WRITE);
     err = VOP_WRITE(fe->fe_vn, &ku);
     if (err) {
         kprintf("%s: Write error: %s\n", fe->fe_filename, strerror(err));
+        lock_release(fe->fe_lock);
         return err;
     }
 
@@ -140,5 +135,6 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;
+    lock_release(fe->fe_lock);
     return 0;
 }

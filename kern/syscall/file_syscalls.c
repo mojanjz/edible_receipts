@@ -46,13 +46,12 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     int err = 0;
     char *kernel_filename;
 
-    kprintf("made it to sys_open\n");
+    // kprintf("made it to sys_open\n");
 
     kernel_filename = (char *)kmalloc(__PATH_MAX);
     if (kernel_filename == NULL)
         return ENOMEM;
 
-    kprintf("sys_open: allocated kernel space for file name\n");
     /* copyin the filename */
     err = copyinstr(filename, kernel_filename, __PATH_MAX, NULL);
     if (err) {
@@ -60,7 +59,7 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
         return err;
     }
 
-    kprintf("sys_open: got the filename %s\n", kernel_filename);
+    // kprintf("sys_open: got the filename %s\n", kernel_filename);
 
     err = file_open(kernel_filename, flags, mode, retval);
 
@@ -93,7 +92,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     struct uio ku;
     char *kernel_buf; // where buf is copied to
 
-    kprintf("made it to sys_write\n");
+    // kprintf("made it to sys_write\n");
 
     /* Check for invalid file descriptor or unopened files */
 
@@ -101,27 +100,33 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
         return EBADF;
     }
 
-    kprintf("made it to sys_write\n");
+    // kprintf("sys_write: fd %d was valid, file was open\n", fd);
 
     struct file_entry *fe = ft->ft_file_entries[fd];
     int how = fe->fe_status & O_ACCMODE;
 
     /* File has not been opened for writing */
-    if (how != O_WRONLY || how != O_RDWR) {
+    if (how != O_WRONLY && how != O_RDWR) {
         return EBADF;
     }
 
-    kernel_buf = (char *)kmalloc(__PATH_MAX);
+    // kprintf("sys_write: flags were okay \n");
+
+    // nbytes + 1 because it's 0 terminated. 
+    kernel_buf = (char *)kmalloc(nbytes+1);
     if (kernel_buf == NULL)
         return ENOMEM;
 
-    kprintf("sys_write: flags weren't bad, file was open\n");
+    // kprintf("sys_write: made a kernel buff\n");
     /* copyin the buffer to kernel buffer */
-    err = copyinstr(buf, kernel_buf, nbytes, NULL);
+    err = copyinstr(buf, kernel_buf, nbytes+1, NULL);
     if (err) {
+        kprintf("couldn't copy the buffer in\n");
         kfree(kernel_buf);
         return err;
     }
+
+    // kprintf("sys_write: got the kernel buffer: %s\n", kernel_buf);
 
     off_t pos = fe->fe_offset;
     uio_kinit(&iov, &ku, kernel_buf, nbytes, pos, UIO_WRITE);
@@ -132,6 +137,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     }
 
     *retval = ku.uio_offset - pos;
+    // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;
     return 0;

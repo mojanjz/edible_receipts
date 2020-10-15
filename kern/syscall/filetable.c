@@ -18,8 +18,13 @@ filetable_init(void) {
     /* Initialize the first three filedescriptors for STDIN, STDOUT, STDERR */
     struct vnode *cons_vn = NULL;
     char path[5];
-    strcpy(path, "con");
-    vfs_open(path, O_RDWR, 0, &cons_vn);
+    strcpy(path, "con:");
+    int err = vfs_open(path, O_RDWR, 0, &cons_vn);
+
+    if (err) {
+        kprintf("could not open console file with error: ");
+        kprintf(strerror(err));
+    }
 
     struct file_entry *cons_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
     cons_fe->fe_filename = path;
@@ -31,7 +36,6 @@ filetable_init(void) {
     for (int fd = 0; fd < __OPEN_MAX; fd++) {
         if (fd < 3) {
             ft->ft_file_entries[fd] = cons_fe;
-            kprintf("cons name should be cons: %s", ft->ft_file_entries[fd]->fe_filename);
         } else {
             ft->ft_file_entries[fd] = NULL;
         }
@@ -61,7 +65,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
 
     for (fd = 3; fd < __OPEN_MAX; fd++){
         if(filetable->ft_file_entries[fd] == NULL) // found an empty slot
-        kprintf("found an empty slot at %d for file %s\n", fd, filename);
+        // kprintf("found an empty slot at %d for file %s\n", fd, filename);
         break;
     }
     
@@ -85,7 +89,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     filetable->ft_file_entries[fd]->fe_vn= ft_vnode;
     filetable->ft_file_entries[fd]->fe_filename = filename;
 
-    kprintf("the file %s is now stored at fd %d with vnode address %p\n", filename, fd, (void *)filetable->ft_file_entries[fd]->fe_vn);
+    // kprintf("the file %s is now stored at fd %d with vnode address %p\n", filename, fd, (void *)filetable->ft_file_entries[fd]->fe_vn);
 
     /* create the lock */
     char fe_lock_name[__OPEN_MAX+10];

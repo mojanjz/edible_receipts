@@ -114,7 +114,6 @@ syscall(struct trapframe *tf)
 					tf->tf_a1,
 					(mode_t) tf->tf_a2,
 					&retval);
-		kprintf("retval after sys_open is %d\n", retval);
 		break;
 
 		case SYS_lseek:
@@ -129,7 +128,6 @@ syscall(struct trapframe *tf)
 				(userptr_t)tf->tf_a1,
 				(size_t) tf->tf_a2,
 				&retval);
-		kprintf("retval after sys_write is %d\n", retval);
 		break;
 	    case SYS___getcwd:
 		err = sys___getcwd((userptr_t)tf->tf_a0,

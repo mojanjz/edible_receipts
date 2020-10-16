@@ -103,6 +103,71 @@ sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
 }
 
 int
+sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
+{
+    int err = 0;
+    struct filetable *ft = curthread->t_filetable;
+    char *kernel_buf;
+    struct iovec iov;
+    struct uio ku;
+
+    /* Check for invalid file descriptor */
+    if (fd < 0 || fd > __OPEN_MAX-1)
+        return EBADF;
+    
+    lock_acquire(ft->ft_lock);
+    if (ft->ft_file_entries[fd]->fe_vn == NULL)
+    {
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+    lock_release(ft->ft_lock);
+
+    /* allocated kernel buffer for reading */
+    kernel_buf = (char *)kmalloc(buflen+1); // buflen + 1 because it's 0 terminated. 
+    if (kernel_buf == NULL)
+        return ENOMEM;
+
+    /* actual read operation */
+    struct file_entry *fe = ft->ft_file_entries[fd];
+    lock_acquire(fe->fe_lock);
+    int how = fe->fe_status & O_ACCMODE;
+
+    /* Check if file is opened for reading */
+    if (how != O_RDONLY && how != O_RDWR) {
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
+        return EBADF;
+    }
+
+    off_t pos = fe->fe_offset;
+    uio_kinit(&iov, &ku, kernel_buf, buflen+1, pos, UIO_READ);
+    err = VOP_READ(fe->fe_vn, &ku);
+    if (err) {
+        kprintf("%s: Read error: %s\n", fe->fe_filename, strerror(err));
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
+        return err;
+    }
+
+    err = copyoutstr(kernel_buf, buf, buflen+1, NULL);
+    if (err) {
+        kprintf("couldn't copy the buffer in\n");
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
+        return err;
+    }
+
+    *retval = ku.uio_offset - pos;
+    // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
+
+    fe->fe_offset += *retval;
+    lock_release(fe->fe_lock);
+    kfree(kernel_buf);
+    return 0;
+}
+
+int
 sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 {   
     int err = 0;
@@ -112,7 +177,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     char *kernel_buf; // where buf is copied to
 
     /* Check for invalid file descriptor or unopened files */
-    if(fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) { // TODO: POTENTIAL RACE CONDITION
+    if (fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) { // TODO: POTENTIAL RACE CONDITION
         return EBADF;
     }
 
@@ -135,15 +200,17 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     /* Check if file is opened for writing */
     if (how != O_WRONLY && how != O_RDWR) {
         lock_release(fe->fe_lock);
+        kfree(kernel_buf);
         return EBADF;
     }
 
     off_t pos = fe->fe_offset;
-    uio_kinit(&iov, &ku, kernel_buf, nbytes, pos, UIO_WRITE);
+    uio_kinit(&iov, &ku, kernel_buf, nbytes+1, pos, UIO_WRITE);
     err = VOP_WRITE(fe->fe_vn, &ku);
     if (err) {
         kprintf("%s: Write error: %s\n", fe->fe_filename, strerror(err));
         lock_release(fe->fe_lock);
+        kfree(kernel_buf);
         return err;
     }
 
@@ -152,5 +219,6 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 
     fe->fe_offset += *retval;
     lock_release(fe->fe_lock);
+    kfree(kernel_buf);
     return 0;
 }

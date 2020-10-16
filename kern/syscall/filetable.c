@@ -71,9 +71,10 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
 
     lock_acquire(filetable->ft_lock);
     for (fd = 3; fd < __OPEN_MAX; fd++){
-        if(filetable->ft_file_entries[fd] == NULL) // found an empty slot
-        kprintf("found an empty slot at %d for file %s\n", fd, filename);
-        break;
+        if(filetable->ft_file_entries[fd] == NULL) {
+            // kprintf("found an empty slot at %d for file %s\n", fd, filename);
+            break;
+        }
     }
     
     /* File table is full */
@@ -105,7 +106,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     lock_release(filetable->ft_lock);
     *retfd = fd;
 
-    // kprintf("successfully opened file %s with fd: %d\n", filename, fd);
+    kprintf("successfully opened file %s with fd: %d\n", filename, fd);
     return 0;
 }
 

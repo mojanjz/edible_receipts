@@ -33,6 +33,7 @@ filetable_init(void) {
     cons_fe->fe_vn = cons_vn;
     cons_fe->fe_offset = 0;
     cons_fe->fe_status = O_RDWR;
+    cons_fe->fe_refcount = 3; // all three point to the same file entry;
     cons_fe->fe_lock = lock_create("cons-lock"); // TODO: should they all have the same lock?
 
     /* Initialize file entries in the file table*/
@@ -49,7 +50,10 @@ filetable_init(void) {
     return 0;
 }
 
-// TODO: add synchronization here
+/*
+ * Calls vfs_open on the filename stored in a buffer kernel
+ * Stores the open file as a file entry in the process's filetable
+ */
 int
 file_open(char *filename, int flags, mode_t mode, int *retfd) {
     int err;
@@ -93,6 +97,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     filetable->ft_file_entries[fd]->fe_offset = 0;
     filetable->ft_file_entries[fd]->fe_vn= ft_vnode;
     filetable->ft_file_entries[fd]->fe_filename = filename;
+    filetable->ft_file_entries[fd]->fe_refcount = 1;
     /* Create the file entry lock */
     char fe_lock_name[__OPEN_MAX+10];
 	snprintf(fe_lock_name, __OPEN_MAX+10, "fe-lock-%d", fd);
@@ -102,4 +107,23 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
 
     // kprintf("successfully opened file %s with fd: %d\n", filename, fd);
     return 0;
+}
+
+int
+file_close(int fd)
+{
+    int err = 0;
+    struct filetable *ft = curthread->t_filetable;
+    struct file_entry *fe;
+
+    /* Making sure noone changes the filetable while we access it */
+    lock_acquire(ft->ft_lock);
+    fe = ft->ft_file_entries[fd];
+    vfs_close(ft->ft_file_entries[fd]->fe_vn);
+    lock_destroy(fe->fe_lock);
+    kfree(fe);
+    ft->ft_file_entries[fd] = NULL;
+    lock_release(ft->ft_lock);
+
+    return err;
 }

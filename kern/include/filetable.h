@@ -47,5 +47,5 @@ struct filetable {
 
 int filetable_init(void);
 int file_open(char *filename, int flags, mode_t mode, int *retval);
-
+int file_close(int fd);
 #endif

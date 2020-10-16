@@ -116,6 +116,10 @@ syscall(struct trapframe *tf)
 					&retval);
 		break;
 
+		case SYS_close:
+		err = sys_close(tf->tf_a0);
+		break;
+
 		case SYS_lseek:
 		err = sys_lseek(tf->tf_a0, 
 					tf->tf_a2, tf->tf_a3,

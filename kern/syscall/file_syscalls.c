@@ -70,6 +70,22 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     return 0;
 }
 
+/* Checks for file descriptor to be in a valid range
+ * Calls file_close that does that actual closing
+ */
+int sys_close(int fd)
+{
+    int result = 0;
+
+    /* Check for invalid file descriptor or unopened files */
+    if(fd < 0 || fd > __OPEN_MAX-1) {
+        return EBADF;
+    }
+
+    result = file_close(fd);
+    return result;
+}
+
 int
 sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
 {
@@ -96,7 +112,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     char *kernel_buf; // where buf is copied to
 
     /* Check for invalid file descriptor or unopened files */
-    if(fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) {
+    if(fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) { // TODO: POTENTIAL RACE CONDITION
         return EBADF;
     }
 

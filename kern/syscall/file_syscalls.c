@@ -39,6 +39,9 @@
 #include <uio.h>
 #include <current.h>
 #include <vnode.h>
+#include <kern/seek.h>
+#include <stat.h>
+
 /*
  * Copies the filename from userpointer buffer to a kernel buffer
  * Calls file_open that does the actual opening
@@ -89,17 +92,63 @@ int sys_close(int fd)
 int
 sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
 {
+    kprintf("IN LSEEK!\n");
+    off_t pos;
+    struct filetable *ft = curthread->t_filetable;
+    struct stat ft_stat;
     (void)fd;
     (void)higher_pos;
     (void)lower_pos;
     (void)whence;
     (void)retval;
+    (void)pos;
 
-    // off_t pos = tf->tf_a2 << 32 | tf->tf_a3;
-    // int whence;
-    // size_t size = sizeof(whence);
-    // copyin((const_userptr_t) tf->tf_sp+16, *whence, size);
-    return 4;
+    int *kernel_whence;
+    kernel_whence = (int *)kmalloc(sizeof(SEEK_END));
+    if (kernel_whence == NULL){
+        kprintf("The kernel whence is null!\n");
+        return ENOMEM;
+    }
+        
+    pos = ((off_t)higher_pos << 32 | lower_pos); //TODO: make sure this works for negative pos values too!!
+    //try a full 32 bit roster and see if you get negative number
+    copyin((const_userptr_t) whence, kernel_whence, sizeof(kernel_whence)); 
+    
+    /* Check if fd is a valid file handle */
+    if ((fd < 0) | (fd >= __OPEN_MAX) | (ft->ft_file_entries[fd] == NULL))
+        return EBADF;
+    /* Check if whence is valid */
+    if ((*kernel_whence != SEEK_SET) && (*kernel_whence != SEEK_CUR) && (*kernel_whence != SEEK_END))
+        return EINVAL;
+    /* Check if file is seekable */
+    if(!VOP_ISSEEKABLE(ft->ft_file_entries[fd]->fe_vn))
+        return ESPIPE;
+
+    /* Switch on whence for new position value */
+    switch (*kernel_whence){
+        case SEEK_SET:
+        pos = pos;
+        break;
+
+        case SEEK_CUR:
+        pos = ft->ft_file_entries[fd]->fe_offset + pos; 
+        break;
+
+        case SEEK_END:
+        VOP_STAT(ft->ft_file_entries[fd]->fe_vn, &ft_stat); //TODO: come back to this
+        pos = ft_stat.st_size + pos;
+        break;
+    }
+
+    /* If valid, change the seek position */
+    if(pos < 0){
+        return EINVAL;
+    } else{
+        ft->ft_file_entries[fd]->fe_offset = pos;
+    }
+        
+    *retval = pos;
+    return 0;
 }
 
 int

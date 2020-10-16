@@ -40,7 +40,7 @@
 #include <current.h>
 #include <vnode.h>
 /*
- * Copies the filename from userpointer buffer to a kernle buffer
+ * Copies the filename from userpointer buffer to a kernel buffer
  * Calls file_open that does the actual opening
  */
 int
@@ -152,13 +152,13 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
 
     err = copyoutstr(kernel_buf, buf, buflen+1, NULL);
     if (err) {
-        kprintf("couldn't copy the buffer in\n");
+//        kprintf("couldn't copy the buffer in\n");
         lock_release(fe->fe_lock);
         kfree(kernel_buf);
         return err;
     }
 
-    *retval = ku.uio_offset - pos;
+    *retval = ku.uio_offset - pos -1; // -1 to avoid the zero
     // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;
@@ -188,7 +188,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     /* copyin the buffer to kernel buffer */
     err = copyinstr(buf, kernel_buf, nbytes+1, NULL);
     if (err) {
-        kprintf("couldn't copy the buffer in\n");
+        // kprintf("couldn't copy the buffer in\n");
         kfree(kernel_buf);
         return err;
     }
@@ -214,11 +214,55 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
         return err;
     }
 
-    *retval = ku.uio_offset - pos;
+    *retval = ku.uio_offset - pos -1; // -1 to ignore the 0 
     // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;
     lock_release(fe->fe_lock);
     kfree(kernel_buf);
+    return 0;
+}
+
+int
+sys_dup2(int oldfd, int newfd, int *retval)
+{   
+    struct filetable *ft = curthread->t_filetable;
+    int result = 0;
+
+    // kprintf("made it to dup2\n");
+
+    /* Check for invalid file descriptors */
+    if (oldfd < 0 || oldfd > __OPEN_MAX-1)
+        return EBADF;
+    
+    if (newfd < 0 || newfd > __OPEN_MAX-1)
+        return EBADF;
+    
+    lock_acquire(ft->ft_lock);
+    if (ft->ft_file_entries[oldfd]->fe_vn == NULL)
+    {
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+    lock_release(ft->ft_lock);
+
+    // kprintf("new and old fd are good: %d, %d\n", newfd, oldfd);
+
+    /* If newfd is open close it */
+    lock_acquire(ft->ft_lock);
+    if (ft->ft_file_entries[newfd] != NULL){
+        result = sys_close(newfd);
+        if(result) {
+            lock_release(ft->ft_lock);
+            return result;
+        }
+    }
+
+    ft->ft_file_entries[oldfd]->fe_refcount += 1;
+    // kprintf("ref counts is now %d\n", ft->ft_file_entries[oldfd]->fe_refcount);
+    ft->ft_file_entries[newfd] = ft->ft_file_entries[oldfd];
+    *retval = newfd;
+    lock_release(ft->ft_lock);
+
     return 0;
 }

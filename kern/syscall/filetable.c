@@ -106,7 +106,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     lock_release(filetable->ft_lock);
     *retfd = fd;
 
-    kprintf("successfully opened file %s with fd: %d\n", filename, fd);
+    // kprintf("successfully opened file %s with fd: %d\n", filename, fd);
     return 0;
 }
 
@@ -120,9 +120,14 @@ file_close(int fd)
     /* Making sure noone changes the filetable while we access it */
     lock_acquire(ft->ft_lock);
     fe = ft->ft_file_entries[fd];
-    vfs_close(ft->ft_file_entries[fd]->fe_vn);
-    lock_destroy(fe->fe_lock);
-    kfree(fe);
+    fe->fe_refcount --;
+    /* If there are no more references close it */
+    if (fe->fe_refcount == 0) {
+        vfs_close(ft->ft_file_entries[fd]->fe_vn);
+        lock_destroy(fe->fe_lock);
+        kfree(fe);
+    }
+
     ft->ft_file_entries[fd] = NULL;
     lock_release(ft->ft_lock);
 

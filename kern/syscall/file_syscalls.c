@@ -39,6 +39,8 @@
 #include <uio.h>
 #include <current.h>
 #include <vnode.h>
+#include <kern/seek.h>
+#include <stat.h>
 
 int
 sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
@@ -52,7 +54,7 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     if (kernel_filename == NULL)
         return ENOMEM;
 
-    kprintf("sys_open: allocated kernel space for file name\n");
+    //kprintf("sys_open: allocated kernel space for file name\n");
     /* copyin the filename */
     err = copyinstr(filename, kernel_filename, __PATH_MAX, NULL);
     if (err) {
@@ -60,7 +62,7 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
         return err;
     }
 
-    kprintf("sys_open: got the filename %s\n", kernel_filename);
+    //kprintf("sys_open: got the filename %s\n", kernel_filename);
 
     err = file_open(kernel_filename, flags, mode, retval);
 
@@ -71,17 +73,63 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
 int
 sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
 {
+    kprintf("IN LSEEK!\n");
+    off_t pos;
+    struct filetable *ft = curthread->t_filetable;
+    struct stat ft_stat;
     (void)fd;
     (void)higher_pos;
     (void)lower_pos;
     (void)whence;
     (void)retval;
+    (void)pos;
 
-    // off_t pos = tf->tf_a2 << 32 | tf->tf_a3;
-    // int whence;
-    // size_t size = sizeof(whence);
-    // copyin((const_userptr_t) tf->tf_sp+16, *whence, size);
-    return 4;
+    int *kernel_whence;
+    kernel_whence = (int *)kmalloc(sizeof(SEEK_END));
+    if (kernel_whence == NULL){
+        kprintf("The kernel whence is null!\n");
+        return ENOMEM;
+    }
+        
+    pos = ((off_t)higher_pos << 32 | lower_pos); //TODO: make sure this works for negative pos values too!!
+    //try a full 32 bit roster and see if you get negative number
+    copyin((const_userptr_t) whence, kernel_whence, sizeof(kernel_whence)); 
+    
+    /* Check if fd is a valid file handle */
+    if ((fd < 0) | (fd >= __OPEN_MAX) | (ft->ft_file_entries[fd] == NULL))
+        return EBADF;
+    /* Check if whence is valid */
+    if ((*kernel_whence != SEEK_SET) && (*kernel_whence != SEEK_CUR) && (*kernel_whence != SEEK_END))
+        return EINVAL;
+    /* Check if file is seekable */
+    if(!VOP_ISSEEKABLE(ft->ft_file_entries[fd]->fe_vn))
+        return ESPIPE;
+
+    /* Switch on whence for new position value */
+    switch (*kernel_whence){
+        case SEEK_SET:
+        pos = pos;
+        break;
+
+        case SEEK_CUR:
+        pos = ft->ft_file_entries[fd]->fe_offset + pos; 
+        break;
+
+        case SEEK_END:
+        VOP_STAT(ft->ft_file_entries[fd]->fe_vn, &ft_stat); //TODO: come back to this
+        pos = ft_stat.st_size + pos;
+        break;
+    }
+
+    /* If valid, change the seek position */
+    if(pos < 0){
+        return EINVAL;
+    } else{
+        ft->ft_file_entries[fd]->fe_offset = pos;
+    }
+        
+    *retval = pos;
+    return 0;
 }
 
 int
@@ -93,7 +141,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     struct uio ku;
     char *kernel_buf; // where buf is copied to
 
-    kprintf("made it to sys_write\n");
+    //kprintf("made it to sys_write\n");
 
     /* Check for invalid file descriptor or unopened files */
 
@@ -101,7 +149,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
         return EBADF;
     }
 
-    kprintf("made it to sys_write\n");
+    //kprintf("made it to sys_write\n");
 
     struct file_entry *fe = ft->ft_file_entries[fd];
     int how = fe->fe_status & O_ACCMODE;
@@ -115,7 +163,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     if (kernel_buf == NULL)
         return ENOMEM;
 
-    kprintf("sys_write: flags weren't bad, file was open\n");
+    //kprintf("sys_write: flags weren't bad, file was open\n");
     /* copyin the buffer to kernel buffer */
     err = copyinstr(buf, kernel_buf, nbytes, NULL);
     if (err) {

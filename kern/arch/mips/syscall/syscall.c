@@ -122,6 +122,9 @@ syscall(struct trapframe *tf)
 					tf->tf_a2, tf->tf_a3,
 					tf->tf_sp+16,
 					&retval);
+		/* return 64 bit value - copy low 32-bit to v1 and high 32-bit to retval */
+		tf->tf_v1 = retval & 0xffffffff;
+		retval = (off_t)retval >> 32; //TODO: confirm this works
 		break;
 
 		case SYS_write:

@@ -7,14 +7,23 @@
 #include <current.h>
 #include <vfs.h>
 
+
 // TODO: ADD FILETABLE DESTROY
-int 
-filetable_init(void) {
+struct filetable *
+filetable_init() {
     kprintf("initializing filetable\n");
-    struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable));
+    struct filetable *ft;
+
+    ft = kmalloc(sizeof(struct filetable));
+    if (ft == NULL) {
+        return NULL;
+    }
 
     /* Create filetable lock */
     ft->ft_lock = lock_create("filetable-lock");
+    if (ft->ft_lock == NULL) {
+        return NULL;
+    }
 
     /* Initialize the first three filedescriptors for STDIN, STDOUT, STDERR */
     struct vnode *cons_vn = NULL;
@@ -25,7 +34,7 @@ filetable_init(void) {
     if (err) {
         kprintf("could not open console file with error: ");
         kprintf(strerror(err));
-        return err;
+        return NULL;
     }
 
     struct file_entry *cons_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
@@ -45,9 +54,7 @@ filetable_init(void) {
         }
     }
 
-    curthread->t_filetable = ft;
-
-    return 0;
+    return ft;
 }
 
 /*
@@ -66,7 +73,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
         return EINVAL;
     
     /* Find an emptry row in the filetable */
-    struct filetable *filetable = curthread->t_filetable;
+    struct filetable *filetable = curproc->p_filetable;
     int fd = 3;
 
     lock_acquire(filetable->ft_lock);
@@ -114,7 +121,7 @@ int
 file_close(int fd)
 {
     int err = 0;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     struct file_entry *fe;
 
     /* Making sure noone changes the filetable while we access it */

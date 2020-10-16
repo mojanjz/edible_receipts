@@ -163,3 +163,17 @@ uio_kinit(struct iovec *iov, struct uio *u,
 	u->uio_rw = rw;
 	u->uio_space = NULL;
 }
+
+// void
+// uio_uinit(struct iovec *iov, struct uio *u,
+// 		userptr_t buf, size_t len, off_t pos, enum uio_rw rw)
+// {
+// 	iov->iov_ubase = buf;
+// 	iov->iov_len = len;
+// 	u->uio_iov = iov;
+// 	u->uio_iovcnt = 1;
+// 	u->uio_offset = pos;
+// 	u->uio_segflg = UIO_USERSPACE;
+// 	u->uio_rw = rw;
+// 	u->uio_space = curproc->p_addrspace;
+// }

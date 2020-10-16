@@ -35,9 +35,14 @@
 #define _FILETABLE_H_
 
 #include <file_entry.h>
-#include <limits.h>
+#include <synch.h>
+#include <kern/limits.h>
 #include <types.h>
 #include <kern/fcntl.h>
+#include <current.h>
+#include <proc.h>
+#include <spl.h>
+#include <vnode.h>
 
 /* File table structure. */
 struct filetable {
@@ -45,7 +50,7 @@ struct filetable {
     struct lock *ft_lock; 
 };
 
-int filetable_init(void);
+struct filetable  *filetable_init(void);
 int file_open(char *filename, int flags, mode_t mode, int *retval);
 int file_close(int fd);
 #endif

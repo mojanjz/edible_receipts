@@ -41,6 +41,13 @@
 #include <vnode.h>
 #include <kern/seek.h>
 #include <stat.h>
+#include <file_entry.h>
+#include <file_syscalls.h>
+#include <proc.h>
+#include <current.h>
+#include <vnode.h>
+#include <limits.h>
+#include <addrspace.h>
 
 /*
  * Copies the filename from userpointer buffer to a kernel buffer
@@ -94,7 +101,7 @@ sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
 {
     kprintf("IN LSEEK!\n");
     off_t pos;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     struct stat ft_stat;
     (void)fd;
     (void)higher_pos;
@@ -155,7 +162,7 @@ int
 sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
 {
     int err = 0;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     char *kernel_buf;
     struct iovec iov;
     struct uio ku;
@@ -220,7 +227,7 @@ int
 sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 {   
     int err = 0;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     struct iovec iov;
     struct uio ku;
     char *kernel_buf; // where buf is copied to
@@ -275,7 +282,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 int
 sys_dup2(int oldfd, int newfd, int *retval)
 {   
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     int result = 0;
 
     // kprintf("made it to dup2\n");

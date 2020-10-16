@@ -74,6 +74,14 @@ proc_create(const char *name)
 		return NULL;
 	}
 
+	/* Initialize Filetable */
+	proc->p_filetable = filetable_init();
+	if (proc->p_filetable == NULL) {
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
+
 	threadarray_init(&proc->p_threads);
 	spinlock_init(&proc->p_lock);
 
@@ -82,6 +90,7 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
+
 
 	return proc;
 }

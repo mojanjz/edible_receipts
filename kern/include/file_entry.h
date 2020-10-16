@@ -42,7 +42,8 @@ struct file_entry {
 	int fe_status; /* Corresponding to how the file is opened O_RDONLY | O_WRONLY | O_RDWR */
     off_t fe_offset; /* Corresponding uio for file descriptor */
     struct vnode *fe_vn; /* Corresponding abstract file representation */
-	char *fe_filename; /* name of the correponding file */	
+	char *fe_filename; /* name of the correponding file */
+	int fe_refcount; /* Number of references to this fe in the filetable */
 };
 
 #endif

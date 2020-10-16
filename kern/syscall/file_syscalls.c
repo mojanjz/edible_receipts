@@ -42,19 +42,22 @@
 #include <kern/seek.h>
 #include <stat.h>
 
+/*
+ * Copies the filename from userpointer buffer to a kernle buffer
+ * Calls file_open that does the actual opening
+ */
 int
 sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
 {
     int err = 0;
     char *kernel_filename;
 
-    kprintf("made it to sys_open\n");
+    // kprintf("made it to sys_open\n");
 
     kernel_filename = (char *)kmalloc(__PATH_MAX);
     if (kernel_filename == NULL)
         return ENOMEM;
 
-    //kprintf("sys_open: allocated kernel space for file name\n");
     /* copyin the filename */
     err = copyinstr(filename, kernel_filename, __PATH_MAX, NULL);
     if (err) {
@@ -62,12 +65,28 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
         return err;
     }
 
-    //kprintf("sys_open: got the filename %s\n", kernel_filename);
+    // kprintf("sys_open: got the filename %s\n", kernel_filename);
 
     err = file_open(kernel_filename, flags, mode, retval);
 
     kfree(kernel_filename);
     return 0;
+}
+
+/* Checks for file descriptor to be in a valid range
+ * Calls file_close that does that actual closing
+ */
+int sys_close(int fd)
+{
+    int result = 0;
+
+    /* Check for invalid file descriptor or unopened files */
+    if(fd < 0 || fd > __OPEN_MAX-1) {
+        return EBADF;
+    }
+
+    result = file_close(fd);
+    return result;
 }
 
 int
@@ -133,6 +152,71 @@ sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
 }
 
 int
+sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
+{
+    int err = 0;
+    struct filetable *ft = curthread->t_filetable;
+    char *kernel_buf;
+    struct iovec iov;
+    struct uio ku;
+
+    /* Check for invalid file descriptor */
+    if (fd < 0 || fd > __OPEN_MAX-1)
+        return EBADF;
+    
+    lock_acquire(ft->ft_lock);
+    if (ft->ft_file_entries[fd]->fe_vn == NULL)
+    {
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+    lock_release(ft->ft_lock);
+
+    /* allocated kernel buffer for reading */
+    kernel_buf = (char *)kmalloc(buflen+1); // buflen + 1 because it's 0 terminated. 
+    if (kernel_buf == NULL)
+        return ENOMEM;
+
+    /* actual read operation */
+    struct file_entry *fe = ft->ft_file_entries[fd];
+    lock_acquire(fe->fe_lock);
+    int how = fe->fe_status & O_ACCMODE;
+
+    /* Check if file is opened for reading */
+    if (how != O_RDONLY && how != O_RDWR) {
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
+        return EBADF;
+    }
+
+    off_t pos = fe->fe_offset;
+    uio_kinit(&iov, &ku, kernel_buf, buflen+1, pos, UIO_READ);
+    err = VOP_READ(fe->fe_vn, &ku);
+    if (err) {
+        kprintf("%s: Read error: %s\n", fe->fe_filename, strerror(err));
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
+        return err;
+    }
+
+    err = copyoutstr(kernel_buf, buf, buflen+1, NULL);
+    if (err) {
+        kprintf("couldn't copy the buffer in\n");
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
+        return err;
+    }
+
+    *retval = ku.uio_offset - pos;
+    // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
+
+    fe->fe_offset += *retval;
+    lock_release(fe->fe_lock);
+    kfree(kernel_buf);
+    return 0;
+}
+
+int
 sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 {   
     int err = 0;
@@ -141,46 +225,49 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     struct uio ku;
     char *kernel_buf; // where buf is copied to
 
-    //kprintf("made it to sys_write\n");
-
     /* Check for invalid file descriptor or unopened files */
-
-    if(fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) {
+    if (fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) { // TODO: POTENTIAL RACE CONDITION
         return EBADF;
     }
 
-    //kprintf("made it to sys_write\n");
-
-    struct file_entry *fe = ft->ft_file_entries[fd];
-    int how = fe->fe_status & O_ACCMODE;
-
-    /* File has not been opened for writing */
-    if (how != O_WRONLY || how != O_RDWR) {
-        return EBADF;
-    }
-
-    kernel_buf = (char *)kmalloc(__PATH_MAX);
+    kernel_buf = (char *)kmalloc(nbytes+1); // nbytes + 1 because it's 0 terminated. 
     if (kernel_buf == NULL)
         return ENOMEM;
 
-    //kprintf("sys_write: flags weren't bad, file was open\n");
     /* copyin the buffer to kernel buffer */
-    err = copyinstr(buf, kernel_buf, nbytes, NULL);
+    err = copyinstr(buf, kernel_buf, nbytes+1, NULL);
     if (err) {
+        kprintf("couldn't copy the buffer in\n");
         kfree(kernel_buf);
         return err;
     }
 
+    struct file_entry *fe = ft->ft_file_entries[fd];
+    lock_acquire(fe->fe_lock);
+    int how = fe->fe_status & O_ACCMODE;
+
+    /* Check if file is opened for writing */
+    if (how != O_WRONLY && how != O_RDWR) {
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
+        return EBADF;
+    }
+
     off_t pos = fe->fe_offset;
-    uio_kinit(&iov, &ku, kernel_buf, nbytes, pos, UIO_WRITE);
+    uio_kinit(&iov, &ku, kernel_buf, nbytes+1, pos, UIO_WRITE);
     err = VOP_WRITE(fe->fe_vn, &ku);
     if (err) {
         kprintf("%s: Write error: %s\n", fe->fe_filename, strerror(err));
+        lock_release(fe->fe_lock);
+        kfree(kernel_buf);
         return err;
     }
 
     *retval = ku.uio_offset - pos;
+    // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;
+    lock_release(fe->fe_lock);
+    kfree(kernel_buf);
     return 0;
 }

@@ -90,7 +90,7 @@ int sys_close(int fd)
 }
 
 int
-sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
+sys_lseek(int fd, int higher_pos, int lower_pos, int whence, off_t *retval)
 {
     off_t pos;
     struct filetable *ft = curthread->t_filetable;
@@ -147,7 +147,7 @@ sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
         fe->fe_offset = pos;
     }
     lock_release(fe->fe_lock);
-
+    //issue is retval is 32 bit here
     *retval = pos;
     return 0;
 }

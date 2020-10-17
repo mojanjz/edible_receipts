@@ -80,6 +80,7 @@ syscall(struct trapframe *tf)
 {
 	int callno;
 	int32_t retval;
+	off_t retval_big;
 	int err;
 
 	KASSERT(curthread != NULL);
@@ -98,6 +99,7 @@ syscall(struct trapframe *tf)
 	 */
 
 	retval = 0;
+	retval_big = 0;
 
 	switch (callno) {
 	    case SYS_reboot:
@@ -124,10 +126,10 @@ syscall(struct trapframe *tf)
 		err = sys_lseek(tf->tf_a0, 
 					tf->tf_a2, tf->tf_a3,
 					tf->tf_sp+16,
-					&retval);
+					&retval_big);
 		/* return 64 bit value - copy low 32-bit to v1 and high 32-bit to retval */
-		tf->tf_v1 = retval & 0xffffffff;
-		retval = (off_t)retval >> 32; //TODO: confirm this works
+		tf->tf_v1 = retval_big & 0xffffffff;
+		retval = retval_big >> 32; //TODO: confirm this works
 		break;
 
 		case SYS_read:

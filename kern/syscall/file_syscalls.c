@@ -136,7 +136,7 @@ sys_lseek(int fd, int higher_pos, int lower_pos, int whence, int *retval)
 
         case SEEK_END:
         VOP_STAT(fe->fe_vn, &ft_stat); //TODO: come back to this
-        pos = ft_stat.st_size + pos;
+        pos = ft_stat.st_size + pos - 1;
         break;
     }
 
@@ -208,7 +208,8 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
         return err;
     }
 
-    *retval = ku.uio_offset - pos -1; // -1 to avoid the zero
+    // *retval = ku.uio_offset - pos -1; // -1 to avoid the zero
+    *retval =  strlen(kernel_buf);
     // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;

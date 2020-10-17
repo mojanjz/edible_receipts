@@ -32,7 +32,7 @@
 
 
 int sys_open(userptr_t filename, int flags, mode_t mode, int *retval);
-int sys_lseek(int fd, int higher_pos, int lower_pos, int whence, off_t *retval);
+int sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval);
 int sys_read(int fd, userptr_t buf, size_t buflen, int *retval);
 int sys_write(int fd, userptr_t buf, size_t nbytes, int *retval);
 int sys_close(int fd);

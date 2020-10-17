@@ -123,8 +123,9 @@ syscall(struct trapframe *tf)
 		break;
 
 		case SYS_lseek:
+		//kprintf("a2 is %lld and a3 is %lld", (off_t)tf->tf_a2, (off_t)tf->tf_a3); //getting the wrong values off registers
 		err = sys_lseek(tf->tf_a0, 
-					tf->tf_a2, tf->tf_a3,
+					(off_t)tf->tf_a2, (off_t)tf->tf_a3,
 					tf->tf_sp+16,
 					&retval_big);
 		/* return 64 bit value - copy low 32-bit to v1 and high 32-bit to retval */

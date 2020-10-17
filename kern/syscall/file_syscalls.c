@@ -90,7 +90,7 @@ int sys_close(int fd)
 }
 
 int
-sys_lseek(int fd, int higher_pos, int lower_pos, int whence, off_t *retval)
+sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
 {
     off_t pos;
     struct filetable *ft = curthread->t_filetable;

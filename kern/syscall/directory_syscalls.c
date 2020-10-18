@@ -31,12 +31,26 @@
 #include <clock.h>
 #include <copyinout.h>
 #include <syscall.h>
+# include <uio.h>
+# include <vfs.h>
 
 int
 sys___getcwd(userptr_t buf, size_t buflen, int *retval)
 {   
+    struct iovec user_iov;
+    struct uio user_uio;
+
     (void) buf;
     (void) buflen;
     (void) retval;
-    return 4;
+
+    uio_uinit(&user_iov, &user_uio, buf, buflen, 0, UIO_READ);
+
+    int result = vfs_getcwd(&user_uio);
+   if (result) {
+       return result;
+   }
+
+    *retval = buflen - user_uio.uio_resid;
+    return 0;
 }

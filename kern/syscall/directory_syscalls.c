@@ -31,8 +31,13 @@
 #include <clock.h>
 #include <copyinout.h>
 #include <syscall.h>
-# include <uio.h>
-# include <vfs.h>
+#include <uio.h>
+#include <vfs.h>
+#include <limits.h>
+#include <kern/errno.h>
+#include <copyinout.h>
+
+
 
 int
 sys___getcwd(userptr_t buf, size_t buflen, int *retval)
@@ -53,4 +58,30 @@ sys___getcwd(userptr_t buf, size_t buflen, int *retval)
 
     *retval = buflen - user_uio.uio_resid;
     return 0;
+}
+
+int
+sys_chdir(userptr_t pathname)
+{  
+    int result = 0;
+    char *k_pathname;
+
+    k_pathname = (char *)kmalloc(__PATH_MAX);
+    if (k_pathname == NULL)
+        return ENOMEM;
+    
+    /* set k_pathname to null first */
+    for (int i=0; i< __PATH_MAX; i++) {
+        k_pathname[i] = '\0';
+    }
+
+    result = copyinstr(pathname, k_pathname, __PATH_MAX, NULL);
+    if (result) {
+        kfree(k_pathname);
+        return result;
+    }
+
+    result = vfs_chdir(k_pathname);
+    kfree(k_pathname);
+    return result;
 }

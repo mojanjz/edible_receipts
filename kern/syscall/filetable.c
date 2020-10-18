@@ -26,29 +26,30 @@ filetable_init() {
     }
 
     /* Initialize the first three filedescriptors for STDIN, STDOUT, STDERR */
-    struct vnode *cons_vn = NULL;
-    char path[5];
-    strcpy(path, "con:");
-    int err = vfs_open(path, O_RDWR, 0, &cons_vn);
+    // struct vnode *cons_vn = NULL;
+    // char path[5];
+    // strcpy(path, "con:");
+    // int err = vfs_open(path, O_RDWR, 0, &cons_vn);
 
-    if (err) {
-        kprintf("could not open console file with error: ");
-        kprintf(strerror(err));
-        return NULL;
-    }
+    // if (err) {
+    //     kprintf("could not open console file with error: ");
+    //     kprintf(strerror(err));
+    //     return NULL;
+    // }
 
-    struct file_entry *cons_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
-    cons_fe->fe_filename = path;
-    cons_fe->fe_vn = cons_vn;
-    cons_fe->fe_offset = 0;
-    cons_fe->fe_status = O_RDWR;
-    cons_fe->fe_refcount = 3; // all three point to the same file entry;
-    cons_fe->fe_lock = lock_create("cons-lock"); // TODO: should they all have the same lock?
+    // TODO ADD THIS BACK
+    // struct file_entry *cons_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    // cons_fe->fe_filename = path;
+    // cons_fe->fe_vn = cons_vn;
+    // cons_fe->fe_offset = 0;
+    // cons_fe->fe_status = O_RDWR;
+    // cons_fe->fe_refcount = 3; // all three point to the same file entry;
+    // cons_fe->fe_lock = lock_create("cons-lock"); // TODO: should they all have the same lock?
 
     /* Initialize file entries in the file table*/
     for (int fd = 0; fd < __OPEN_MAX; fd++) {
         if (fd < 3) {
-            ft->ft_file_entries[fd] = cons_fe;
+            ft->ft_file_entries[fd] = NULL;
         } else {
             ft->ft_file_entries[fd] = NULL;
         }

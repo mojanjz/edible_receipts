@@ -178,6 +178,10 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     if (kernel_buf == NULL)
         return ENOMEM;
 
+    /* set kernel buf to null first */
+    for (int i=0; i< (int)buflen+1; i++) {
+        kernel_buf[i] = '\0';
+    }
     /* actual read operation */
     struct file_entry *fe = ft->ft_file_entries[fd];
     lock_acquire(fe->fe_lock);

@@ -135,7 +135,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     if (how != O_WRONLY && how != O_RDONLY && how != O_RDWR)
         return EINVAL;
     
-    /* Find an emptry row in the filetable */
+    /* Find an empty row in the filetable */
     struct filetable *filetable = curthread->t_filetable;
     int fd = 3;
 
@@ -190,6 +190,12 @@ file_close(int fd)
     /* Making sure noone changes the filetable while we access it */
     lock_acquire(ft->ft_lock);
     fe = ft->ft_file_entries[fd];
+    /* check if the file is already closed */
+    if (fe == NULL) {
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+    /* If it's open let's close it */
     fe->fe_refcount --;
     /* If there are no more references close it */
     if (fe->fe_refcount == 0) {

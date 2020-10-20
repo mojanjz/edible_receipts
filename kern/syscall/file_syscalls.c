@@ -70,7 +70,7 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     err = file_open(kernel_filename, flags, mode, retval);
 
     kfree(kernel_filename);
-    return 0;
+    return err;
 }
 
 /* Checks for file descriptor to be in a valid range
@@ -175,22 +175,13 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
         return EBADF;
     
     lock_acquire(ft->ft_lock);
-    if (ft->ft_file_entries[fd]->fe_vn == NULL)
+    if (ft->ft_file_entries[fd] == NULL || ft->ft_file_entries[fd]->fe_vn == NULL)
     {
         lock_release(ft->ft_lock);
         return EBADF;
     }
     lock_release(ft->ft_lock);
 
-    // /* allocated kernel buffer for reading */
-    // kernel_buf = (char *)kmalloc(buflen+1); // buflen + 1 because it's 0 terminated. 
-    // if (kernel_buf == NULL)
-    //     return ENOMEM;
-
-    // /* set kernel buf to null first */
-    // for (int i=0; i< (int)buflen+1; i++) {
-    //     kernel_buf[i] = '\0';
-    // }
     /* actual read operation */
     struct file_entry *fe = ft->ft_file_entries[fd];
     lock_acquire(fe->fe_lock);
@@ -241,9 +232,17 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     char *kernel_buf; // where buf is copied to
 
     /* Check for invalid file descriptor or unopened files */
-    if (fd < 0 || fd > __OPEN_MAX-1 || ft->ft_file_entries[fd]->fe_vn == NULL ) { // TODO: POTENTIAL RACE CONDITION
+    if (fd < 0 || fd > __OPEN_MAX-1) { // TODO: POTENTIAL RACE CONDITION
         return EBADF;
     }
+
+    lock_acquire(ft->ft_lock);
+    if (ft->ft_file_entries[fd] == NULL || ft->ft_file_entries[fd]->fe_vn == NULL)
+    {
+        lock_release(ft->ft_lock);
+        return EBADF;
+    }
+    lock_release(ft->ft_lock);
 
     kernel_buf = (char *)kmalloc(nbytes+1); // nbytes + 1 because it's 0 terminated. 
     if (kernel_buf == NULL)

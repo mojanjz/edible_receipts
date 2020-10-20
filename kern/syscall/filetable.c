@@ -12,41 +12,111 @@ int
 filetable_init(void) {
     kprintf("initializing filetable\n");
     struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable));
+    int err = 0;
 
     /* Create filetable lock */
     ft->ft_lock = lock_create("filetable-lock");
 
     /* Initialize the first three filedescriptors for STDIN, STDOUT, STDERR */
-    struct vnode *cons_vn = NULL;
-    char path[5];
-    strcpy(path, "con:");
-    int err = vfs_open(path, O_RDWR, 0, &cons_vn);
+    // struct vnode *cons_vn = NULL;
+    // char path[5];
+    // strcpy(path, "con:");
+    // int err = vfs_open(path, O_RDWR, 0, &cons_vn);
 
+    // if (err) {
+    //     kprintf("could not open console file with error: ");
+    //     kprintf(strerror(err));
+    //     return err;
+    // }
+
+    // struct file_entry *cons_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    // cons_fe->fe_filename = path;
+    // cons_fe->fe_vn = cons_vn;
+    // cons_fe->fe_offset = 0;
+    // cons_fe->fe_status = O_RDWR;
+    // cons_fe->fe_refcount = 3; // all three point to the same file entry;
+    // cons_fe->fe_lock = lock_create("cons-lock"); // TODO: should they all have the same lock?
+
+    /* Initialize file entries in the file table*/
+    for (int fd = 0; fd < __OPEN_MAX; fd++) {
+        // if (fd < 3) {
+        //     ft->ft_file_entries[fd] = cons_fe;
+        // } else {
+            ft->ft_file_entries[fd] = NULL;
+        // }
+    }
+
+    err = filetable_init_cons(ft);
+    if(err){
+        kprintf("Error initing ft_cons");
+        return err;
+    }
+
+    curthread->t_filetable = ft;
+
+    return 0;
+}
+
+/* Initialize the first three filedescriptors for STDIN, STDOUT, STDERR */
+int 
+filetable_init_cons(struct filetable *ft){
+    kprintf("In console init");
+    struct vnode *cons_in_vn = NULL;
+    struct vnode *cons_out_vn = NULL;
+    struct vnode *cons_err_vn = NULL;
+    int err = 0;
+    char path_in[5];
+    char path_out[5];
+    char path_err[5];
+
+    strcpy(path_in, "con:");
+    strcpy(path_out, "con:");
+    strcpy(path_err, "con:");
+
+    kprintf("Checkpoint 1\n");
+    err = vfs_open(path_in, O_RDONLY, 0, &cons_in_vn);
+    kprintf("Is there an error? %d", err);
+    err = vfs_open(path_out, O_WRONLY, 0, &cons_out_vn);
+    kprintf("Is there an error? %d", err);
+    err = vfs_open(path_err, O_WRONLY, 0, &cons_err_vn);
+    kprintf("Is there an error? %d", err);
+
+    kprintf("Checkpoint 2\n");
     if (err) {
         kprintf("could not open console file with error: ");
         kprintf(strerror(err));
         return err;
     }
 
-    struct file_entry *cons_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
-    cons_fe->fe_filename = path;
-    cons_fe->fe_vn = cons_vn;
-    cons_fe->fe_offset = 0;
-    cons_fe->fe_status = O_RDWR;
-    cons_fe->fe_refcount = 3; // all three point to the same file entry;
-    cons_fe->fe_lock = lock_create("cons-lock"); // TODO: should they all have the same lock?
+    struct file_entry *cons_in_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    struct file_entry *cons_out_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    struct file_entry *cons_err_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
 
-    /* Initialize file entries in the file table*/
-    for (int fd = 0; fd < __OPEN_MAX; fd++) {
-        if (fd < 3) {
-            ft->ft_file_entries[fd] = cons_fe;
-        } else {
-            ft->ft_file_entries[fd] = NULL;
-        }
-    }
+    cons_in_fe->fe_filename = path_in;
+    cons_in_fe->fe_vn = cons_in_vn;
+    cons_in_fe->fe_offset = 0;
+    cons_in_fe->fe_status = O_RDONLY;
+    cons_in_fe->fe_refcount = 1; 
+    cons_in_fe->fe_lock = lock_create("cons-in-lock"); 
 
-    curthread->t_filetable = ft;
+    cons_out_fe->fe_filename = path_out;
+    cons_out_fe->fe_vn = cons_out_vn;
+    cons_out_fe->fe_offset = 0;
+    cons_out_fe->fe_status = O_WRONLY;
+    cons_out_fe->fe_refcount = 1; 
+    cons_out_fe->fe_lock = lock_create("cons-out-lock"); 
 
+    cons_err_fe->fe_filename = path_err;
+    cons_err_fe->fe_vn = cons_err_vn;
+    cons_err_fe->fe_offset = 0;
+    cons_err_fe->fe_status = O_WRONLY;
+    cons_err_fe->fe_refcount = 1; 
+    cons_err_fe->fe_lock = lock_create("cons-err-lock");     
+
+    ft->ft_file_entries[0] = cons_in_fe;
+    ft->ft_file_entries[1] = cons_out_fe;
+    ft->ft_file_entries[2] = cons_err_fe;
+    
     return 0;
 }
 

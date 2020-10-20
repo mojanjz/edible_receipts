@@ -150,7 +150,7 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
 
     /* If valid, change the seek position */
     if(pos < 0){
-        lock_release(ft->ft_lock);
+        lock_release(fe->fe_lock);
         return EINVAL;
     } else{
         fe->fe_offset = pos;
@@ -305,21 +305,26 @@ sys_dup2(int oldfd, int newfd, int *retval)
     
     if (newfd < 0 || newfd > __OPEN_MAX-1)
         return EBADF;
+
+    if (newfd == oldfd){
+        *retval = newfd;
+        return 0;
+    }
     
     lock_acquire(ft->ft_lock);
-    if (ft->ft_file_entries[oldfd]->fe_vn == NULL)
+    if (ft->ft_file_entries[oldfd] == NULL || ft->ft_file_entries[oldfd]->fe_vn == NULL)
     {
         lock_release(ft->ft_lock);
         return EBADF;
     }
     lock_release(ft->ft_lock);
 
-    // kprintf("new and old fd are good: %d, %d\n", newfd, oldfd);
+    kprintf("new and old fd are good: %d, %d\n", newfd, oldfd);
 
     /* If newfd is open close it */
     lock_acquire(ft->ft_lock);
     if (ft->ft_file_entries[newfd] != NULL){
-        result = sys_close(newfd);
+        result = dup_file_close(newfd);
         if(result) {
             lock_release(ft->ft_lock);
             return result;
@@ -327,7 +332,7 @@ sys_dup2(int oldfd, int newfd, int *retval)
     }
 
     ft->ft_file_entries[oldfd]->fe_refcount += 1;
-    // kprintf("ref counts is now %d\n", ft->ft_file_entries[oldfd]->fe_refcount);
+    kprintf("ref counts is now %d\n", ft->ft_file_entries[oldfd]->fe_refcount);
     ft->ft_file_entries[newfd] = ft->ft_file_entries[oldfd];
     *retval = newfd;
     lock_release(ft->ft_lock);

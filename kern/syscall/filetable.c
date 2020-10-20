@@ -209,3 +209,30 @@ file_close(int fd)
 
     return err;
 }
+
+// same as file_close but not atomic cuz dup2 is atomic already
+int
+dup_file_close(int fd)
+{
+
+    int err = 0;
+    struct filetable *ft = curthread->t_filetable;
+    struct file_entry *fe;
+
+    fe = ft->ft_file_entries[fd];
+    /* check if the file is already closed */
+    if (fe == NULL) {
+        return EBADF;
+    }
+    /* If it's open let's close it */
+    fe->fe_refcount --;
+    /* If there are no more references close it */
+    if (fe->fe_refcount == 0) {
+        vfs_close(ft->ft_file_entries[fd]->fe_vn);
+        kfree(fe);
+    }
+
+    ft->ft_file_entries[fd] = NULL;
+
+    return err;
+}

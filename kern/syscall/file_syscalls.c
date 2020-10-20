@@ -108,10 +108,18 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
     
     /* Check if fd is a valid file handle */
     lock_acquire(ft->ft_lock);
-    if ((fd < 0) | (fd >= __OPEN_MAX) | (ft->ft_file_entries[fd] == NULL)){
+    kprintf("The fd is %d ", fd);
+    kprintf("Is the fd less than zero? %d", fd<0);
+    kprintf("Is the fd greater than om? %d ", fd>= __OPEN_MAX);
+    if ((fd < 0) | (fd >= __OPEN_MAX)){
+        kprintf("Checkpoint 1");
+        lock_release(ft->ft_lock);
+        return EBADF;
+    } else if (ft->ft_file_entries[fd] == NULL){
         lock_release(ft->ft_lock);
         return EBADF;
     }
+    kprintf("Checkpoint 2");
     lock_release(ft->ft_lock); 
     /* Check if whence is valid */
     if ((*kernel_whence != SEEK_SET) && (*kernel_whence != SEEK_CUR) && (*kernel_whence != SEEK_END))
@@ -142,6 +150,7 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
 
     /* If valid, change the seek position */
     if(pos < 0){
+        lock_release(ft->ft_lock);
         return EINVAL;
     } else{
         fe->fe_offset = pos;

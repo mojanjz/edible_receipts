@@ -65,7 +65,7 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
         return err;
     }
 
-    // kprintf("sys_open: got the filename %s\n", kernel_filename);
+    kprintf("sys_open: got the filename %s\n", kernel_filename);
 
     err = file_open(kernel_filename, flags, mode, retval);
 
@@ -136,7 +136,7 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
 
         case SEEK_END:
         VOP_STAT(fe->fe_vn, &ft_stat); //TODO: come back to this
-        pos = ft_stat.st_size + pos - 1;
+        pos = ft_stat.st_size + pos;
         break;
     }
 
@@ -157,7 +157,7 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
 {
     int err = 0;
     struct filetable *ft = curthread->t_filetable;
-    char *kernel_buf;
+    // char *kernel_buf;
     struct iovec iov;
     struct uio ku;
 
@@ -173,15 +173,15 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     }
     lock_release(ft->ft_lock);
 
-    /* allocated kernel buffer for reading */
-    kernel_buf = (char *)kmalloc(buflen+1); // buflen + 1 because it's 0 terminated. 
-    if (kernel_buf == NULL)
-        return ENOMEM;
+    // /* allocated kernel buffer for reading */
+    // kernel_buf = (char *)kmalloc(buflen+1); // buflen + 1 because it's 0 terminated. 
+    // if (kernel_buf == NULL)
+    //     return ENOMEM;
 
-    /* set kernel buf to null first */
-    for (int i=0; i< (int)buflen+1; i++) {
-        kernel_buf[i] = '\0';
-    }
+    // /* set kernel buf to null first */
+    // for (int i=0; i< (int)buflen+1; i++) {
+    //     kernel_buf[i] = '\0';
+    // }
     /* actual read operation */
     struct file_entry *fe = ft->ft_file_entries[fd];
     lock_acquire(fe->fe_lock);
@@ -190,35 +190,35 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     /* Check if file is opened for reading */
     if (how != O_RDONLY && how != O_RDWR) {
         lock_release(fe->fe_lock);
-        kfree(kernel_buf);
+        // kfree(kernel_buf);
         return EBADF;
     }
 
     off_t pos = fe->fe_offset;
-    uio_kinit(&iov, &ku, kernel_buf, buflen+1, pos, UIO_READ);
+    uio_uinit(&iov, &ku, buf, buflen, pos, UIO_READ);
     err = VOP_READ(fe->fe_vn, &ku);
     if (err) {
         kprintf("%s: Read error: %s\n", fe->fe_filename, strerror(err));
         lock_release(fe->fe_lock);
-        kfree(kernel_buf);
+        // kfree(kernel_buf);
         return err;
     }
 
-    err = copyoutstr(kernel_buf, buf, buflen+1, NULL);
-    if (err) {
-//        kprintf("couldn't copy the buffer in\n");
-        lock_release(fe->fe_lock);
-        kfree(kernel_buf);
-        return err;
-    }
+//     err = copyoutstr(kernel_buf, buf, buflen+1, NULL);
+//     if (err) {
+// //        kprintf("couldn't copy the buffer in\n");
+//         lock_release(fe->fe_lock);
+//         kfree(kernel_buf);
+//         return err;
+//     }
 
     // *retval = ku.uio_offset - pos -1; // -1 to avoid the zero
-    *retval =  strlen(kernel_buf);
+    *retval = ku.uio_offset - pos;
     // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;
     lock_release(fe->fe_lock);
-    kfree(kernel_buf);
+    // kfree(kernel_buf);
     return 0;
 }
 
@@ -239,14 +239,19 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     kernel_buf = (char *)kmalloc(nbytes+1); // nbytes + 1 because it's 0 terminated. 
     if (kernel_buf == NULL)
         return ENOMEM;
-
-    /* copyin the buffer to kernel buffer */
-    err = copyinstr(buf, kernel_buf, nbytes+1, NULL);
-    if (err) {
-        // kprintf("couldn't copy the buffer in\n");
-        kfree(kernel_buf);
-        return err;
+    
+     /* set kernel buf to null first */
+    for (int i=0; i< (int)nbytes+1; i++) {
+        kernel_buf[i] = 0;
     }
+
+    // /* copyin the buffer to kernel buffer */
+    // err = copyinstr(buf, kernel_buf, nbytes+1, NULL);
+    // if (err) {
+    //     kprintf("couldn't copy the buffer in with err %s\n", strerror(err));
+    //     kfree(kernel_buf);
+    //     return err;
+    // }
 
     struct file_entry *fe = ft->ft_file_entries[fd];
     lock_acquire(fe->fe_lock);
@@ -260,7 +265,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     }
 
     off_t pos = fe->fe_offset;
-    uio_kinit(&iov, &ku, kernel_buf, nbytes+1, pos, UIO_WRITE);
+    uio_uinit(&iov, &ku, buf, nbytes, pos, UIO_WRITE);
     err = VOP_WRITE(fe->fe_vn, &ku);
     if (err) {
         kprintf("%s: Write error: %s\n", fe->fe_filename, strerror(err));
@@ -269,7 +274,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
         return err;
     }
 
-    *retval = ku.uio_offset - pos -1; // -1 to ignore the 0 
+    *retval = ku.uio_offset - pos; // -1 to ignore the 0 
     // kprintf("successfully wrote to the file and ret val is now %d\n", *retval);
 
     fe->fe_offset += *retval;

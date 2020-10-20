@@ -126,12 +126,13 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
         return EINVAL;
     /* Check if file is seekable */
     struct file_entry *fe = ft->ft_file_entries[fd];
+    kprintf("Checkpoint 3");
     lock_acquire(fe->fe_lock);
     if(!VOP_ISSEEKABLE(fe->fe_vn)){
         lock_release(fe->fe_lock);
         return ESPIPE;
     }
-        
+    kprintf("Checkpoint 4");
     /* Switch on whence for new position value */
     switch (*kernel_whence){
         case SEEK_SET:
@@ -147,10 +148,10 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
         pos = ft_stat.st_size + pos;
         break;
     }
-
+    kprintf("Checkpoint 5");
     /* If valid, change the seek position */
     if(pos < 0){
-        lock_release(ft->ft_lock);
+        lock_release(fe->fe_lock);
         return EINVAL;
     } else{
         fe->fe_offset = pos;

@@ -38,7 +38,13 @@
 #include <copyinout.h>
 
 
-
+/* 
+ * Gets the name of the current working directory and stores it in buf.
+ * 
+ * Parameters: buf (pointer to where cwd should be stored), buflen (size of buf),
+ * pointer to address of return val.
+ * Returns: On succes, the length of data stored (non-negative)
+ */
 int
 sys___getcwd(userptr_t buf, size_t buflen, int *retval)
 {   
@@ -59,7 +65,12 @@ sys___getcwd(userptr_t buf, size_t buflen, int *retval)
     *retval = buflen - user_uio.uio_resid;
     return 0;
 }
-
+/* 
+ * Changes the current directory
+ * 
+ * Parameters: pathname (the name of directory that current process is to be set to)
+ * Returns: On succes, 0.  On failure, -1 and errno set.
+ */
 int
 sys_chdir(userptr_t pathname)
 {  

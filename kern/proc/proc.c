@@ -83,6 +83,9 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
+	/* Filetable */
+	proc->p_filetable = NULL;
+
 	return proc;
 }
 
@@ -198,6 +201,12 @@ proc_create_runprogram(const char *name)
 
 	newproc = proc_create(name);
 	if (newproc == NULL) {
+		return NULL;
+	}
+
+	int err = filetable_init();
+	if (err) {
+		kfree(newproc);
 		return NULL;
 	}
 

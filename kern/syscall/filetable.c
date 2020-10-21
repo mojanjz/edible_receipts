@@ -11,19 +11,16 @@
 int 
 filetable_init(void) {
     kprintf("initializing filetable\n");
-    struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable));
+    struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable)); // TODO check if it actually allocated space
     int err = 0;
 
     /* Create filetable lock */
+    kprintf("before creating the lock\n");
     ft->ft_lock = lock_create("filetable-lock");
-
+    kprintf("after creating the lock\n");
     /* Initialize file entries in the file table*/
     for (int fd = 0; fd < __OPEN_MAX; fd++) {
-        // if (fd < 3) {
-        //     ft->ft_file_entries[fd] = cons_fe;
-        // } else {
-            ft->ft_file_entries[fd] = NULL;
-        // }
+        ft->ft_file_entries[fd] = NULL;
     }
 
     err = filetable_init_cons(ft);
@@ -31,9 +28,9 @@ filetable_init(void) {
         kprintf("Error initing ft_cons");
         return err;
     }
-
-    curthread->t_filetable = ft;
-
+    kprintf("is is before allocation\n");
+    curproc->p_filetable = ft;
+    kprintf("is if after allocation\n");
     return 0;
 }
 
@@ -110,17 +107,18 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
         return EINVAL;
     
     /* Find an empty row in the filetable */
-    struct filetable *filetable = curthread->t_filetable;
+    struct filetable *filetable = curproc->p_filetable;
     int fd = 3;
-
+    kprintf("checkpoint 2.1\n");
     lock_acquire(filetable->ft_lock);
+    kprintf("checkpoint 2.1.1\n");
     for (fd = 3; fd < __OPEN_MAX; fd++){
         if(filetable->ft_file_entries[fd] == NULL) {
             // kprintf("found an empty slot at %d for file %s\n", fd, filename);
             break;
         }
     }
-    
+    kprintf("checkpoint 2.2\n");
     /* File table is full */
     if(fd == __OPEN_MAX) {
         kprintf("file table is full for file %s\n", filename);
@@ -135,7 +133,7 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
         lock_release(filetable->ft_lock);
         return err;
     }
-
+    kprintf("checkpoint 2.3\n");
     /* Update the file table with the vnode */
     filetable->ft_file_entries[fd] = (struct file_entry *)kmalloc(sizeof(struct file_entry));
     filetable->ft_file_entries[fd]->fe_status = flags;
@@ -158,7 +156,7 @@ int
 file_close(int fd)
 {
     int err = 0;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     struct file_entry *fe;
 
     /* Making sure noone changes the filetable while we access it */
@@ -190,7 +188,7 @@ dup_file_close(int fd)
 {
 
     int err = 0;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     struct file_entry *fe;
 
     fe = ft->ft_file_entries[fd];

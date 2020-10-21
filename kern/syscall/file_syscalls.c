@@ -41,6 +41,13 @@
 #include <vnode.h>
 #include <kern/seek.h>
 #include <stat.h>
+#include <file_entry.h>
+#include <file_syscalls.h>
+#include <proc.h>
+#include <current.h>
+#include <vnode.h>
+#include <limits.h>
+#include <addrspace.h>
 
 /*
  * Copies the filename from userpointer buffer to a kernel buffer
@@ -57,16 +64,13 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     kernel_filename = (char *)kmalloc(__PATH_MAX);
     if (kernel_filename == NULL)
         return ENOMEM;
-
     /* copyin the filename */
     err = copyinstr(filename, kernel_filename, __PATH_MAX, NULL);
     if (err) {
         kfree(kernel_filename);
         return err;
     }
-
     err = file_open(kernel_filename, flags, mode, retval);
-
     kfree(kernel_filename);
     return err;
 }
@@ -77,6 +81,8 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
 int sys_close(int fd)
 {
     int result = 0;
+
+    kprintf("made it to sys_close\n");
 
     /* Check for invalid file descriptor or unopened files */
     if(fd < 0 || fd > __OPEN_MAX-1) {
@@ -91,7 +97,7 @@ int
 sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
 {
     off_t pos;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     struct stat ft_stat;
 
     int *kernel_whence;
@@ -156,10 +162,12 @@ int
 sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
 {
     int err = 0;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     // char *kernel_buf;
     struct iovec iov;
     struct uio ku;
+
+    kprintf("made it to sys_read\n");
 
     /* Check for invalid file descriptor */
     if (fd < 0 || fd > __OPEN_MAX-1)
@@ -205,7 +213,7 @@ int
 sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 {   
     int err = 0;
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     struct iovec iov;
     struct uio ku;
 
@@ -251,7 +259,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 int
 sys_dup2(int oldfd, int newfd, int *retval)
 {   
-    struct filetable *ft = curthread->t_filetable;
+    struct filetable *ft = curproc->p_filetable;
     int result = 0;
 
     /* Check for invalid file descriptors */

@@ -30,6 +30,8 @@
 #ifndef _FILE_SYSCALLS_H_
 #define _FILE_SYSCALLS_H_
 
+#include <current.h>
+
 
 int sys_open(userptr_t filename, int flags, mode_t mode, int *retval);
 int sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval);

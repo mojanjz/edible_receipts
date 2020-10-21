@@ -35,9 +35,14 @@
 #define _FILETABLE_H_
 
 #include <file_entry.h>
-#include <limits.h>
+#include <synch.h>
+#include <kern/limits.h>
 #include <types.h>
 #include <kern/fcntl.h>
+#include <current.h>
+#include <proc.h>
+#include <spl.h>
+#include <vnode.h>
 
 /* File table structure. */
 struct filetable {

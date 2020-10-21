@@ -98,8 +98,8 @@ runprogram(char *progname)
 		return result;
 	}
 
-	/* Initialize Filetable for the process */
-	filetable_init();
+	// /* Initialize Filetable for the process */
+	// filetable_init();
 
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,

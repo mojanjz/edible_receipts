@@ -33,11 +33,10 @@
 #include <types.h>
 #include <synch.h>
 
-// /* File descriptor structure. */
+/* 
+ * File entry structure that represents one entry in the process' file table.
+ */
 struct file_entry {
-	/*
-	 * File descriptor internal fields
-	 */
 	struct lock *fe_lock;
 	int fe_status; /* Corresponding to how the file is opened O_RDONLY | O_WRONLY | O_RDWR */
     off_t fe_offset; /* Corresponding uio for file descriptor */

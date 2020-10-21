@@ -258,7 +258,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     struct uio ku;
 
     /* Check for invalid file descriptor or unopened files */
-    if (fd < 0 || fd > __OPEN_MAX-1) { // TODO: POTENTIAL RACE CONDITION
+    if (fd < 0 || fd > __OPEN_MAX-1) { 
         return EBADF;
     }
 
@@ -299,7 +299,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 
 /* 
  * Clones the file handle oldfd onto the file handle newfd. If newfd names an already-open file, that file is closed. 
- * Note that both file handles refer to the same open file entry.
+ * Note that both file handles refer to the same open file entry. If newfd and old fd are the same, nothing happens.
  * Parameters: oldfd (file handle to be cloned), newfd (file handle to be cloned onto), pointer to return val address.
  * Returns: On success, newfd.  On failure, -1 and errno set.
  */

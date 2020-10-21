@@ -44,7 +44,11 @@
 #include <spl.h>
 #include <vnode.h>
 
-/* File table structure. */
+/*
+ * File table structure, which contains a lock and an array of file entries.
+ * Note that the indices of ft_file_entries will correspond to each file entry's 
+ * file handle.
+ */
 struct filetable {
     struct file_entry *ft_file_entries[__OPEN_MAX];
     struct lock *ft_lock; 
@@ -54,5 +58,6 @@ struct filetable * filetable_init(void);
 int file_open(char *filename, int flags, mode_t mode, int *retval);
 int file_close(int fd);
 int dup_file_close(int fd);
-int filetable_init_cons(struct filetable *ft);
+int filetable_init_std(struct filetable *ft);
+void filetable_destroy(struct filetable *ft);
 #endif

@@ -74,6 +74,12 @@ proc_create(const char *name)
 		kfree(proc);
 		return NULL;
 	}
+	proc->p_filetable = filetable_init();
+	if (proc->p_filetable == NULL) {
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
 
 	threadarray_init(&proc->p_threads);
 	spinlock_init(&proc->p_lock);
@@ -83,9 +89,6 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
-
-	/* Filetable */
-	proc->p_filetable = filetable_init();
 
 	return proc;
 }
@@ -169,7 +172,7 @@ proc_destroy(struct proc *proc)
 		}
 		as_destroy(as);
 	}
-
+	filetable_destroy(proc->p_filetable);
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
@@ -205,13 +208,12 @@ proc_create_runprogram(const char *name)
 		return NULL;
 	}
 
-	int err = filetable_init_cons(newproc->p_filetable);
+	/* Initialize STDIN, STDOUT, STDERR */
+	int err = filetable_init_std(newproc->p_filetable);
 	if (err) {
 		kfree(newproc);
 		return NULL;
 	}
-	kprintf("initialized the filetable\n");
-	kprintf("%s", newproc->p_filetable->ft_file_entries[0]->fe_filename);
 
 	/* VM fields */
 

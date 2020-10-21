@@ -80,7 +80,7 @@ syscall(struct trapframe *tf)
 {
 	int callno;
 	int32_t retval;
-	off_t retval_big;
+	off_t retval_big; //Must have a 64-bit retval for lseek system call
 	int err;
 
 	KASSERT(curthread != NULL);
@@ -123,14 +123,13 @@ syscall(struct trapframe *tf)
 		break;
 
 		case SYS_lseek:
-		//kprintf("a2 is %lld and a3 is %lld", (off_t)tf->tf_a2, (off_t)tf->tf_a3); //getting the wrong values off registers
 		err = sys_lseek(tf->tf_a0, 
 					(off_t)tf->tf_a2, (off_t)tf->tf_a3,
 					tf->tf_sp+16,
 					&retval_big);
-		/* return 64 bit value - copy low 32-bit to v1 and high 32-bit to retval */
+		/* Return the 64 bit return val of sys_lseek in 32-bit register v1 & 32 bit var retval */
 		tf->tf_v1 = retval_big & 0xffffffff;
-		retval = retval_big >> 32; //TODO: confirm this works
+		retval = retval_big >> 32; 
 		break;
 
 		case SYS_read:

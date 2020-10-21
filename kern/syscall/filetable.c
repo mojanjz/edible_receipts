@@ -1,4 +1,3 @@
-
 #include <kern/errno.h>
 #include <kern/limits.h>
 #include <types.h>
@@ -7,16 +6,19 @@
 #include <current.h>
 #include <vfs.h>
 
-// TODO: ADD FILETABLE DESTROY
+/* 
+ * Function to create and initialize a new file table.
+ * 
+ * Parameters: void
+ * Returns: the newly created & initialized file table
+ */
 struct filetable *
 filetable_init()
 {
-    kprintf("initializing filetable\n");
-    struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable)); // TODO check if it actually allocated space
+    struct filetable *ft = (struct filetable *)kmalloc(sizeof(struct filetable));
     if (ft == NULL) {
         return NULL;
     }
-    // int err = 0;
 
     /* Create filetable lock */
     ft->ft_lock = lock_create("filetable-lock");
@@ -24,7 +26,8 @@ filetable_init()
         kfree(ft);
         return NULL;
     }
-    /* Initialize file entries in the file table*/
+
+    /* Initialize file entries in the file table to be NULL*/
     for (int fd = 0; fd < __OPEN_MAX; fd++) {
         ft->ft_file_entries[fd] = NULL;
     }
@@ -32,66 +35,88 @@ filetable_init()
     return ft;
 }
 
-/* Initialize the first three filedescriptors for STDIN, STDOUT, STDERR */
+/* 
+ * Initialize the first three filedescriptors for STDIN, STDOUT, STDERR.
+ * Parameters: pointer to ft (the file table for which to init the special file entries)
+ */
 int 
-filetable_init_cons(struct filetable *ft){
-    struct vnode *cons_in_vn = NULL;
-    struct vnode *cons_out_vn = NULL;
-    struct vnode *cons_err_vn = NULL;
+filetable_init_std(struct filetable *ft){
+    struct vnode *std_in_vn = NULL;
+    struct vnode *std_out_vn = NULL;
+    struct vnode *std_err_vn = NULL;
     int err = 0;
     char path_in[5];
     char path_out[5];
     char path_err[5];
 
+    /* Path string cannot be reused since vfs_open destroys the string passed to it */
     strcpy(path_in, "con:");
     strcpy(path_out, "con:");
     strcpy(path_err, "con:");
 
-    err = vfs_open(path_in, O_RDONLY, 0, &cons_in_vn);
-    err = vfs_open(path_out, O_WRONLY, 0, &cons_out_vn);
-    err = vfs_open(path_err, O_WRONLY, 0, &cons_err_vn);
+    err = vfs_open(path_in, O_RDONLY, 0, &std_in_vn);
+    err = vfs_open(path_out, O_WRONLY, 0, &std_out_vn);
+    err = vfs_open(path_err, O_WRONLY, 0, &std_err_vn);
 
     if (err) {
-        kprintf("could not open console file with error: ");
-        kprintf(strerror(err));
         return err;
     }
 
-    struct file_entry *cons_in_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
-    struct file_entry *cons_out_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
-    struct file_entry *cons_err_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    struct file_entry *std_in_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    struct file_entry *std_out_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    struct file_entry *std_err_fe = (struct file_entry *)kmalloc(sizeof(struct file_entry));
+    if ((std_in_fe == NULL)|| (std_out_fe == NULL) || (std_err_fe == NULL))
+        return ENOMEM;
 
-    cons_in_fe->fe_filename = path_in;
-    cons_in_fe->fe_vn = cons_in_vn;
-    cons_in_fe->fe_offset = 0;
-    cons_in_fe->fe_status = O_RDONLY;
-    cons_in_fe->fe_refcount = 1; 
-    cons_in_fe->fe_lock = lock_create("cons-in-lock"); 
+    /* Init STDIN */
+    std_in_fe->fe_filename = path_in;
+    std_in_fe->fe_vn = std_in_vn;
+    std_in_fe->fe_offset = 0;
+    std_in_fe->fe_status = O_RDONLY;
+    std_in_fe->fe_refcount = 1; 
+    std_in_fe->fe_lock = lock_create("std-in-lock"); 
+    if (std_in_fe->fe_lock == NULL){
+        kfree(std_in_fe);
+        return ENOMEM;
+    }
 
-    cons_out_fe->fe_filename = path_out;
-    cons_out_fe->fe_vn = cons_out_vn;
-    cons_out_fe->fe_offset = 0;
-    cons_out_fe->fe_status = O_WRONLY;
-    cons_out_fe->fe_refcount = 1; 
-    cons_out_fe->fe_lock = lock_create("cons-out-lock"); 
+    /* Init STDOUT */
+    std_out_fe->fe_filename = path_out;
+    std_out_fe->fe_vn = std_out_vn;
+    std_out_fe->fe_offset = 0;
+    std_out_fe->fe_status = O_WRONLY;
+    std_out_fe->fe_refcount = 1; 
+    std_out_fe->fe_lock = lock_create("std-out-lock"); 
+    if (std_out_fe->fe_lock == NULL){
+        kfree(std_out_fe);
+        return ENOMEM; 
+    }
+    /* Init STDERR */
+    std_err_fe->fe_filename = path_err;
+    std_err_fe->fe_vn = std_err_vn;
+    std_err_fe->fe_offset = 0;
+    std_err_fe->fe_status = O_WRONLY;
+    std_err_fe->fe_refcount = 1; 
+    std_err_fe->fe_lock = lock_create("std-err-lock"); 
+    if (std_err_fe->fe_lock == NULL){
+        kfree(std_err_fe);
+        return ENOMEM;
+    }    
 
-    cons_err_fe->fe_filename = path_err;
-    cons_err_fe->fe_vn = cons_err_vn;
-    cons_err_fe->fe_offset = 0;
-    cons_err_fe->fe_status = O_WRONLY;
-    cons_err_fe->fe_refcount = 1; 
-    cons_err_fe->fe_lock = lock_create("cons-err-lock");     
-
-    ft->ft_file_entries[0] = cons_in_fe;
-    ft->ft_file_entries[1] = cons_out_fe;
-    ft->ft_file_entries[2] = cons_err_fe;
+    ft->ft_file_entries[0] = std_in_fe;
+    ft->ft_file_entries[1] = std_out_fe;
+    ft->ft_file_entries[2] = std_err_fe;
     
     return 0;
 }
 
 /*
- * Calls vfs_open on the filename stored in a buffer kernel
- * Stores the open file as a file entry in the process's filetable
+ * Opens a file from a file table.  Calls vfs_open on the filename stored in a buffer kernel
+ * Stores the open file as a file entry in the process's filetable.
+ * 
+ * Parameters: pointer to filename to open, flags (specify how to open file), mode (optional param specifying permissions),
+ * pointer to retval.
+ * Returns: On success, 0.  On failure, error value.
  */
 int
 file_open(char *filename, int flags, mode_t mode, int *retfd) {
@@ -110,7 +135,6 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     lock_acquire(filetable->ft_lock);
     for (fd = 3; fd < __OPEN_MAX; fd++){
         if(filetable->ft_file_entries[fd] == NULL) {
-            // kprintf("found an empty slot at %d for file %s\n", fd, filename);
             break;
         }
     }
@@ -142,10 +166,15 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     lock_release(filetable->ft_lock);
     *retfd = fd;
 
-    // kprintf("successfully opened file %s with fd: %d\n", filename, fd);
     return 0;
 }
 
+/* 
+ * Closes the file with file handle fd
+ *
+ * Parameters: fd (file handle to close)
+ * Returns: On success, 0.  On failure, error code.
+ */
 int
 file_close(int fd)
 {
@@ -153,10 +182,10 @@ file_close(int fd)
     struct filetable *ft = curproc->p_filetable;
     struct file_entry *fe;
 
-    /* Making sure noone changes the filetable while we access it */
+    /* Making sure no one changes the filetable while we access it */
     lock_acquire(ft->ft_lock);
     fe = ft->ft_file_entries[fd];
-    /* check if the file is already closed */
+    /* Check if the file is already closed */
     if (fe == NULL) {
         lock_release(ft->ft_lock);
         return EBADF;
@@ -176,7 +205,13 @@ file_close(int fd)
     return err;
 }
 
-// same as file_close but not atomic cuz dup2 is atomic already
+/* 
+ * UNSYNCHRONIZED method used to close a file in dup2.  Same as file_close but not atomic since
+ *  dup2 is atomic already.
+ * 
+ * Parameters: fd (file handle to close)
+ * Returns: On success, 0.  On failure, error code.
+ */
 int
 dup_file_close(int fd)
 {
@@ -186,7 +221,7 @@ dup_file_close(int fd)
     struct file_entry *fe;
 
     fe = ft->ft_file_entries[fd];
-    /* check if the file is already closed */
+    /* Check if the file is already closed */
     if (fe == NULL) {
         return EBADF;
     }
@@ -201,4 +236,24 @@ dup_file_close(int fd)
     ft->ft_file_entries[fd] = NULL;
 
     return err;
+}
+
+/* 
+ *Destroys a filetable.
+
+ * Parameters: ft (filetable to destroy)
+ * Returns: void
+ */
+void filetable_destroy(struct filetable *ft){
+    KASSERT(ft != NULL);
+
+    /* Iterate over file table and destroy file entries */
+    for (int i = __OPEN_MAX - 1; i <= 0; i--){
+        /* We can just call file_close, since it destroys the file entry's lock and kfrees it */
+        if(ft->ft_file_entries[i] != NULL)
+            file_close(i);
+    }
+
+    lock_destroy(ft->ft_lock);
+    kfree(ft);
 }

@@ -50,8 +50,12 @@
 #include <addrspace.h>
 
 /*
- * Copies the filename from userpointer buffer to a kernel buffer
- * Calls file_open that does the actual opening
+ * Opens a file, device, or other kernel device.
+ * 
+ * Parameters: filename (the pathname), flags (specifies how to open file),
+ * mode (optional argument that provides file permissions), pointer to return value address.
+ * Returns: On success, the non-negative file handle of the opened file.  On error, -1
+ * and errno is set.
  */
 int
 sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
@@ -73,8 +77,11 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     return err;
 }
 
-/* Checks for file descriptor to be in a valid range
- * Calls file_close that does that actual closing
+/* 
+ * Closes the file entry corresponding to file handle fd.
+ * 
+ * Parameters: fd (the file handle corresponding to the file entry to be closed)
+ * Returns: 0 on success.  On error, -1 and errno is set.
  */
 int sys_close(int fd)
 {
@@ -89,6 +96,15 @@ int sys_close(int fd)
     return result;
 }
 
+/*
+* Alters the current seek position of the the file entry corresponding to fd.  Seek positions less than zero
+* are invalid, and seek positions beyond EOF are legal.
+* 
+* Parameters: fd (file handle corresponding to file entry who's seek position is to be changed),
+* higher_pos (the high 32-bits of the 64-bit position argument), lower_pos (the low 32-bits of the 64-bit
+* position argument ), whence (integer that specifies how to calculate new seek position), pointer to return value address.
+* Returns: On success, the new position.  On error, -1 and errno is set.
+*/
 int
 sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
 {
@@ -154,6 +170,18 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
     return 0;
 }
 
+/* 
+* Reads up to buflen bytes from the file entry specified by fd, at the 
+* location specified by the file entry's seek position. The file must be open
+* for reading. The current seek position of the file is advanced by the number of 
+* bytes read.
+* 
+* Parameters: fd (file handle of file to be read from), buf (pointer to location where 
+* read values are to be stored), buflen (number of bytes to read from file entry), pointer to
+* return value address.
+* Returns: On success, count of bytes read (positive) & 0 if at end of file.  On failure, -1
+* and errno set.
+*/
 int
 sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
 {
@@ -203,6 +231,15 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     return 0;
 }
 
+/* 
+ * Writes up to nbytes bytes to the file specified by fd , at the location in the file specified 
+ * by the current seek position of the file, taking the data from the space pointed to by buf.  Note 
+ * that the file must be open for writing.
+ * 
+ * Parameters: fd (file handle corresponding to file entry to write to), buf (pointer
+ * to space to store values to be written), nbytes (number of bytes to write), pointer to return value address
+ * Return: On succes, the number of bytes written (positive).  On failure, -1 and errno set.
+ */
 int
 sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 {   
@@ -250,6 +287,12 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     return 0;
 }
 
+/* 
+ * Clones the file handle oldfd onto the file handle newfd. If newfd names an already-open file, that file is closed. 
+ * Note that both file handles refer to the same open file entry.
+ * Parameters: oldfd (file handle to be cloned), newfd (file handle to be cloned onto), pointer to return val address.
+ * Returns: On success, newfd.  On failure, -1 and errno set.
+ */
 int
 sys_dup2(int oldfd, int newfd, int *retval)
 {   

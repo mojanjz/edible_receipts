@@ -66,12 +66,14 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     kernel_filename = (char *)kmalloc(__PATH_MAX);
     if (kernel_filename == NULL)
         return ENOMEM;
+    
     /* copyin the filename */
     err = copyinstr(filename, kernel_filename, __PATH_MAX, NULL);
     if (err) {
         kfree(kernel_filename);
         return err;
     }
+
     err = file_open(kernel_filename, flags, mode, retval);
     kfree(kernel_filename);
     return err;
@@ -102,7 +104,8 @@ int sys_close(int fd)
 * 
 * Parameters: fd (file handle corresponding to file entry who's seek position is to be changed),
 * higher_pos (the high 32-bits of the 64-bit position argument), lower_pos (the low 32-bits of the 64-bit
-* position argument ), whence (integer that specifies how to calculate new seek position), pointer to return value address.
+* position argument ), whence (integer that specifies how to calculate new seek position), pointer to 64-bit 
+* return value address.
 * Returns: On success, the new position.  On error, -1 and errno is set.
 */
 int
@@ -111,15 +114,15 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
     off_t pos;
     struct filetable *ft = curproc->p_filetable;
     struct stat ft_stat;
-
     int *kernel_whence;
+
     kernel_whence = (int *)kmalloc(sizeof(SEEK_END));
     if (kernel_whence == NULL){
         return ENOMEM;
     }
-        
-    pos = ((off_t)higher_pos << 32 | lower_pos); //TODO: make sure this works for negative pos values too!!
-    //try a full 32 bit roster and see if you get negative number
+    
+    /* Concatenate the higher and lower 32-bits into 64-bit variable pos */
+    pos = ((off_t)higher_pos << 32 | lower_pos); 
     copyin((const_userptr_t) whence, kernel_whence, sizeof(kernel_whence)); 
     
     /* Check if fd is a valid file handle */
@@ -132,9 +135,11 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
         return EBADF;
     }
     lock_release(ft->ft_lock); 
+
     /* Check if whence is valid */
     if ((*kernel_whence != SEEK_SET) && (*kernel_whence != SEEK_CUR) && (*kernel_whence != SEEK_END))
         return EINVAL;
+
     /* Check if file is seekable */
     struct file_entry *fe = ft->ft_file_entries[fd];
     lock_acquire(fe->fe_lock);
@@ -142,22 +147,26 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
         lock_release(fe->fe_lock);
         return ESPIPE;
     }
-    /* Switch on whence for new position value */
+
     switch (*kernel_whence){
+        /* The new position is pos */
         case SEEK_SET:
         pos = pos;
         break;
-
+        
+        /* The new position is the current position plus pos */
         case SEEK_CUR:
         pos = fe->fe_offset + pos; 
         break;
-
+        
+        /* The new position is the position of end-of-file plus pos */
         case SEEK_END:
-        VOP_STAT(fe->fe_vn, &ft_stat); //TODO: come back to this
+        /* Get file's EOF */
+        VOP_STAT(fe->fe_vn, &ft_stat);
         pos = ft_stat.st_size + pos;
         break;
     }
-    /* If valid, change the seek position */
+    /* Check that the new seek position is valid */
     if(pos < 0){
         lock_release(fe->fe_lock);
         return EINVAL;
@@ -165,7 +174,7 @@ sys_lseek(int fd, off_t higher_pos, off_t lower_pos, int whence, off_t *retval)
         fe->fe_offset = pos;
     }
     lock_release(fe->fe_lock);
-    //issue is retval is 32 bit here
+
     *retval = pos;
     return 0;
 }
@@ -187,7 +196,6 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
 {
     int err = 0;
     struct filetable *ft = curproc->p_filetable;
-    // char *kernel_buf;
     struct iovec iov;
     struct uio ku;
 
@@ -196,6 +204,7 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
         return EBADF;
     
     lock_acquire(ft->ft_lock);
+
     if (ft->ft_file_entries[fd] == NULL || ft->ft_file_entries[fd]->fe_vn == NULL)
     {
         lock_release(ft->ft_lock);
@@ -203,7 +212,7 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     }
     lock_release(ft->ft_lock);
 
-    /* actual read operation */
+    /* Perform actual read operation */
     struct file_entry *fe = ft->ft_file_entries[fd];
     lock_acquire(fe->fe_lock);
     int how = fe->fe_status & O_ACCMODE;
@@ -271,6 +280,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
         return EBADF;
     }
 
+    /* Perform actual write opperation */
     off_t pos = fe->fe_offset;
     uio_uinit(&iov, &ku, buf, nbytes, pos, UIO_WRITE);
     err = VOP_WRITE(fe->fe_vn, &ku);
@@ -280,7 +290,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
         return err;
     }
 
-    *retval = ku.uio_offset - pos; // -1 to ignore the 0 
+    *retval = ku.uio_offset - pos;
 
     fe->fe_offset += *retval;
     lock_release(fe->fe_lock);
@@ -319,8 +329,6 @@ sys_dup2(int oldfd, int newfd, int *retval)
     }
     lock_release(ft->ft_lock);
 
-    kprintf("new and old fd are good: %d, %d\n", newfd, oldfd);
-
     /* If newfd is open close it */
     lock_acquire(ft->ft_lock);
     if (ft->ft_file_entries[newfd] != NULL){
@@ -332,7 +340,6 @@ sys_dup2(int oldfd, int newfd, int *retval)
     }
 
     ft->ft_file_entries[oldfd]->fe_refcount += 1;
-    kprintf("ref counts is now %d\n", ft->ft_file_entries[oldfd]->fe_refcount);
     ft->ft_file_entries[newfd] = ft->ft_file_entries[oldfd];
     *retval = newfd;
     lock_release(ft->ft_lock);

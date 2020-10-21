@@ -51,13 +51,9 @@ sys___getcwd(userptr_t buf, size_t buflen, int *retval)
     struct iovec user_iov;
     struct uio user_uio;
 
-    (void) buf;
-    (void) buflen;
-    (void) retval;
-
     uio_uinit(&user_iov, &user_uio, buf, buflen, 0, UIO_READ);
-
     int result = vfs_getcwd(&user_uio);
+   
    if (result) {
        return result;
    }
@@ -81,7 +77,7 @@ sys_chdir(userptr_t pathname)
     if (k_pathname == NULL)
         return ENOMEM;
     
-    /* set k_pathname to null first */
+    /* set k_pathname to null initially */
     for (int i=0; i< __PATH_MAX; i++) {
         k_pathname[i] = '\0';
     }

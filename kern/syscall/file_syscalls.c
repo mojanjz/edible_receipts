@@ -197,7 +197,7 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     int err = 0;
     struct filetable *ft = curproc->p_filetable;
     struct iovec iov;
-    struct uio ku;
+    struct uio user_uio;
 
     /* Check for invalid file descriptor */
     if (fd < 0 || fd > __OPEN_MAX-1)
@@ -224,15 +224,15 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     }
 
     off_t pos = fe->fe_offset;
-    uio_uinit(&iov, &ku, buf, buflen, pos, UIO_READ);
-    err = VOP_READ(fe->fe_vn, &ku);
+    uio_uinit(&iov, &user_uio, buf, buflen, pos, UIO_READ);
+    err = VOP_READ(fe->fe_vn, &user_uio);
     if (err) {
         kprintf("%s: Read error: %s\n", fe->fe_filename, strerror(err));
         lock_release(fe->fe_lock);
         return err;
     }
 
-    *retval = ku.uio_offset - pos;
+    *retval = user_uio.uio_offset - pos;
 
     fe->fe_offset += *retval;
     lock_release(fe->fe_lock);
@@ -255,7 +255,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     int err = 0;
     struct filetable *ft = curproc->p_filetable;
     struct iovec iov;
-    struct uio ku;
+    struct uio user_uio;
 
     /* Check for invalid file descriptor or unopened files */
     if (fd < 0 || fd > __OPEN_MAX-1) { 
@@ -282,15 +282,15 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
 
     /* Perform actual write opperation */
     off_t pos = fe->fe_offset;
-    uio_uinit(&iov, &ku, buf, nbytes, pos, UIO_WRITE);
-    err = VOP_WRITE(fe->fe_vn, &ku);
+    uio_uinit(&iov, &user_uio, buf, nbytes, pos, UIO_WRITE);
+    err = VOP_WRITE(fe->fe_vn, &user_uio);
     if (err) {
         kprintf("%s: Write error: %s\n", fe->fe_filename, strerror(err));
         lock_release(fe->fe_lock);
         return err;
     }
 
-    *retval = ku.uio_offset - pos;
+    *retval = user_uio.uio_offset - pos;
 
     fe->fe_offset += *retval;
     lock_release(fe->fe_lock);

@@ -49,6 +49,7 @@
 #include <addrspace.h>
 #include <vnode.h>
 #include <limits.h>
+#include <filetable.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -84,7 +85,7 @@ proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 	/* Filetable */
-	proc->p_filetable = NULL;
+	proc->p_filetable = filetable_init();
 
 	return proc;
 }
@@ -204,11 +205,13 @@ proc_create_runprogram(const char *name)
 		return NULL;
 	}
 
-	int err = filetable_init();
+	int err = filetable_init_cons(newproc->p_filetable);
 	if (err) {
 		kfree(newproc);
 		return NULL;
 	}
+	kprintf("initialized the filetable\n");
+	kprintf("%s", newproc->p_filetable->ft_file_entries[0]->fe_filename);
 
 	/* VM fields */
 

@@ -157,9 +157,6 @@ thread_create(const char *name)
 
 	/* If you add to struct thread, be sure to initialize here */
 
-	/* Initialize file table */
-	thread->t_filetable = NULL;
-
 	return thread;
 }
 

@@ -59,8 +59,6 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
     int err = 0;
     char *kernel_filename;
 
-    // kprintf("made it to sys_open\n");
-
     kernel_filename = (char *)kmalloc(__PATH_MAX);
     if (kernel_filename == NULL)
         return ENOMEM;
@@ -81,8 +79,6 @@ sys_open(userptr_t filename, int flags, mode_t mode, int *retval)
 int sys_close(int fd)
 {
     int result = 0;
-
-    kprintf("made it to sys_close\n");
 
     /* Check for invalid file descriptor or unopened files */
     if(fd < 0 || fd > __OPEN_MAX-1) {
@@ -166,8 +162,6 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     // char *kernel_buf;
     struct iovec iov;
     struct uio ku;
-
-    kprintf("made it to sys_read\n");
 
     /* Check for invalid file descriptor */
     if (fd < 0 || fd > __OPEN_MAX-1)

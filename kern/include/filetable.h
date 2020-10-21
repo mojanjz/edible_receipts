@@ -50,7 +50,7 @@ struct filetable {
     struct lock *ft_lock; 
 };
 
-int filetable_init(void);
+struct filetable * filetable_init(void);
 int file_open(char *filename, int flags, mode_t mode, int *retval);
 int file_close(int fd);
 int dup_file_close(int fd);

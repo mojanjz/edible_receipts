@@ -4,7 +4,7 @@ The 4 bytes of e_indent. Magic numbers are 7f 45('E') 4c(L) 46(F). This can also
 readelf -h bin/ls | grep Magic
 
 2. What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
-They are all seg_flags. UIO_USERISPACE should be used if some code needs to be transferred (executable file), UIO_USERSPACE should be used if some user process data is being tranfered from the kernel to user space or vice versa. In the code however, it looks like both cases are treated the same and copyin and copyout are used on them.
+They are all seg_flags. UIO_USERISPACE should be used if some code needs to be transferred (executable file), UIO_USERSPACE should be used if some user process data is being tranfered from the kernel to user space or vice versa. In the code however.
 You would want to use UIO_SYSSPACE flag if your data transfer request is inside the kernel space and just transfers data within the kernel.
 
 3. Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?

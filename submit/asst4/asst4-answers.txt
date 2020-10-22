@@ -18,11 +18,11 @@ execption_return in exception-mips1.S. I believe it is machine dependent since i
 
 6. In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
 copyin, copyout: copyinout.c
-memmove: string.h it is a built-in C function and located in memmove.c
+memmove: the prototyp is in string.h and, it is a built-in C function and the function itself is located in memmove.c
 This is because copyin and copyout deal with user and kernel address space and are in charge of data transfer between the two whereas memmove is used when the same address space is used whether it's the user or the kernel. copyin and copyout are unsafe function calls that require better error handling in case of failures during the data transfer. copyfail logic is used in this case for that purpose. Another reason to use copyin and copyout is that it checks for off limit addresses pointed by the user pointers that memmove is not capable of.
 
 7. What (briefly) is the purpose of userptr_t?
-user pointer is a pointer to a one-byte struct. It is the way to differentiate between pointers to the user space pointers and regular pointers in the kernel space. It's used in copyin and copyout for data transfer between the two address spaces.
+user pointer is a pointer to a one-byte struct. It is the way to differentiate between pointers to the user space  and regular pointers in the kernel space. It's used in copyin and copyout for data transfer between the two address spaces.
 
 8. What is the numerical value of the exception code for a MIPS system call?
 from trapframe.h: EX_SYS 8
@@ -30,12 +30,6 @@ from trapframe.h: EX_SYS 8
 9. How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
 In syscalls.C on line 141,  we see that the program counter is incremented by four in order to avoid restarting syscall.  This means that a MIPS instruction 
 must be 4 bytes, or 32 bits.
-
-What is an instruction in MIPS, and how is it executed/linked to syscall?
-Is it the same as the calling convention for syscall? If so then 4args*32bits/8(bits/byte) -> I dont think so
-32 bits, 4 bytes
-MIPS register is 32 bits, maybe look to syscalls-mips.S -> syscall function? Referenced in comments of syscall()
-I think its because the register v0 takes the input values.
 
 10. Why do you "probably want to change" the implementation of kill_curthread()?
 We want to build a function that can kill the current thread when user-level code hits a fatal fault, instead of just panicking and crashing the kernel.  The current implementation,

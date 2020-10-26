@@ -165,6 +165,7 @@ syscall(struct trapframe *tf)
 
 		case SYS_fork:
 		err = sys_fork(tf, &fork_retval);
+		kprintf("Hello I mad it !");
 		break;
 
 	    default:

@@ -239,6 +239,34 @@ proc_create_runprogram(const char *name)
 	return newproc;
 }
 
+struct proc * 
+proc_create_fork(const char *name){
+	struct proc *child_proc;
+	int err = 0;
+	
+	child_proc = proc_create(name);
+	kprintf("Checkpoint 2");
+	if(child_proc == NULL){
+		return NULL;//TODO: improve error handling
+	}
+	
+	/* Copy the address space of the parent */
+    struct addrspace *child_as = (struct addrspace *)kmalloc(sizeof(struct addrspace));
+    if (child_as == NULL) {
+        return NULL;//TODO: improve error handling
+    }
+    err = as_copy(curproc->p_addrspace, &child_as);
+    if(err) {
+        return NULL; //TODO: improve error handling
+    }
+	child_proc->p_addrspace = child_as;
+    // proc_setas(child_as);
+
+    kprintf("the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
+
+	return child_proc;
+}
+
 /*
  * Add a thread to a process. Either the thread or the process might
  * or might not be current.

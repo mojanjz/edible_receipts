@@ -39,5 +39,4 @@ int sys_read(int fd, userptr_t buf, size_t buflen, int *retval);
 int sys_write(int fd, userptr_t buf, size_t nbytes, int *retval);
 int sys_close(int fd);
 int sys_dup2( int oldfd, int newfd, int *retval);
-int sys_fork(struct trapframe *tf, pid_t *retval);
 #endif

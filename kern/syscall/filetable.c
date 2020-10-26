@@ -244,7 +244,8 @@ dup_file_close(int fd)
  * Parameters: ft (filetable to destroy)
  * Returns: void
  */
-void filetable_destroy(struct filetable *ft){
+void filetable_destroy(struct filetable *ft)
+{
     KASSERT(ft != NULL);
 
     /* Iterate over file table and destroy file entries */
@@ -256,4 +257,25 @@ void filetable_destroy(struct filetable *ft){
 
     lock_destroy(ft->ft_lock);
     kfree(ft);
+}
+
+void
+filetable_copy(struct filetable *new_ft, struct filetable *ft)
+{
+    lock_acquire(ft->ft_lock);
+    for (int i=0; i< __OPEN_MAX; i++) {
+        struct file_entry *fe = ft->ft_file_entries[i];
+
+        if(fe == NULL) {
+            continue;
+        }
+
+        lock_acquire(fe->fe_lock);
+        fe->fe_refcount = fe->fe_refcount + 1;
+        lock_release(fe->fe_lock);
+    
+        new_ft->ft_file_entries[i] = fe;
+    }
+
+    lock_release(ft->ft_lock);
 }

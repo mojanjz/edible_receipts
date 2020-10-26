@@ -48,6 +48,7 @@
 #include <vnode.h>
 #include <limits.h>
 #include <addrspace.h>
+#include <mips/trapframe.h>
 
 /*
  * Opens a file, device, or other kernel device.
@@ -345,4 +346,48 @@ sys_dup2(int oldfd, int newfd, int *retval)
     lock_release(ft->ft_lock);
 
     return 0;
+}
+
+int
+sys_fork(struct trapframe *tf, pid_t *retval)
+{
+    int err = 0;
+    size_t child_name_size = 12;
+    (void) retval;
+    (void) tf;
+    struct proc *child_proc;
+    pid_t child_pid;
+
+    /* Get the next available PID for the parent */
+    child_pid = issue_pid(); // TODO CHANGE issue_pid
+
+    /* Create child process */
+    char child_name[child_name_size];
+    snprintf(child_name, child_name_size, "%s-pid:%d", curproc->p_name, (int)child_pid);
+    child_proc = proc_create(child_name);
+
+    /* Copy the address space of the parent */
+    struct addrspace *child_as = (struct addrspace *)kmalloc(sizeof(struct addrspace));
+    if (child_as == NULL) {
+        return ENOMEM;
+    }
+
+    err = as_copy(curproc->p_addrspace, &child_as);
+    if(err) {
+        return err;
+    }
+
+    proc_setas(child_as);
+
+    kprintf("the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
+
+    /* Copy the parent filetable */
+    filetable_copy(child_proc->p_filetable, curproc->p_filetable);
+
+    kprintf("parent first filename %d, child first filename %d\n", curproc->p_filetable->ft_file_entries[0]->fe_status, child_proc->p_filetable->ft_file_entries[0]->fe_status);
+
+    /* Copy the parent's trapframe */
+
+
+    return err; 
 }

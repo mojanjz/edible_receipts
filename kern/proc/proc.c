@@ -90,6 +90,9 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
+	/* PID Initialization */
+	proc->p_last_issued_pid = __PID_MIN; // TODO CHANGE
+
 	return proc;
 }
 
@@ -343,4 +346,12 @@ proc_setas(struct addrspace *newas)
 	proc->p_addrspace = newas;
 	spinlock_release(&proc->p_lock);
 	return oldas;
+}
+
+pid_t
+issue_pid()
+{
+	pid_t new_pid = curproc->p_last_issued_pid + 1;
+	curproc->p_last_issued_pid = new_pid;
+	return new_pid;
 }

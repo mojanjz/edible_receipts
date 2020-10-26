@@ -60,4 +60,5 @@ int file_close(int fd);
 int dup_file_close(int fd);
 int filetable_init_std(struct filetable *ft);
 void filetable_destroy(struct filetable *ft);
+void filetable_copy(struct filetable *new_ft, struct filetable *ft);
 #endif

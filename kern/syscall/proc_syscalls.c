@@ -42,13 +42,14 @@
 #include <kern/seek.h>
 #include <stat.h>
 #include <file_entry.h>
-#include <file_syscalls.h>
 #include <proc.h>
 #include <current.h>
 #include <vnode.h>
 #include <limits.h>
 #include <addrspace.h>
 #include <mips/trapframe.h>
+
+int copy_in_args(userptr_t args, char **kargs);
 
 int
 sys_fork(struct trapframe *tf, pid_t *retval)
@@ -118,4 +119,50 @@ enter_new_forked_process(void *data1, unsigned long data2){
     kprintf("after as activate\n");
     kprintf("Current process is: %s\n", curproc->p_name);
     mips_usermode(tf);
+}
+
+int 
+sys_execv(userptr_t program, userptr_t args)
+{
+    int err = 0;
+    (void)args;
+    /* Copy program name in*/
+    char *kernel_progname;
+
+    kernel_progname = (char *)kmalloc(__PATH_MAX);
+    if (kernel_progname == NULL) {
+        return ENOMEM;
+    }
+
+    err = copyinstr(program, kernel_progname, __PATH_MAX, NULL);
+    if (err) {
+        kfree(kernel_progname);
+        return err;
+    }
+
+    /* copy arguements in */
+    char **kargs;
+
+    kargs = kmalloc(__ARG_MAX*(sizeof(char *))); // TODO: can get the actual number of arguements instead of using ARGMAX
+    err = copy_in_args(args, kargs);
+    
+
+    
+    /* Load the executable and run it */
+    /* Copy arguments from kernel to user stack */
+    /* Return to user mode */
+    return -1; // should never get here
+}
+
+int
+copy_in_args(userptr_t args, char **kargs)
+{
+    (void)args;
+    (void)kargs;
+
+    int i = 0;
+    do {
+
+    } while (kargs[i]!= NULL);
+    return 0;
 }

@@ -82,7 +82,7 @@ syscall(struct trapframe *tf)
 	int32_t retval;
 	off_t retval_big; //Must have a 64-bit retval for lseek system call
 	int err;
-	pid_t fork_retval;
+	pid_t fork_retval; // TODO: DELETE don't need it
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -165,8 +165,11 @@ syscall(struct trapframe *tf)
 
 		case SYS_fork:
 		err = sys_fork(tf, &fork_retval);
-		kprintf("Hello I mad it !");
 		break;
+
+		case SYS_execv:
+		err = sys_execv((userptr_t)tf->tf_a0,
+						(userptr_t)tf->tf_a1);
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);

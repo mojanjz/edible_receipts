@@ -55,21 +55,25 @@ int
 sys_fork(struct trapframe *tf, pid_t *retval)
 {
     int err = 0;
-    size_t child_name_size = 100;
+    // size_t child_name_size = 100;
     (void) retval;
     (void) tf;
     struct proc *child_proc;
     pid_t child_pid;
 
-    /* Get the next available PID for the parent */
-    child_pid = issue_pid(); // TODO CHANGE issue_pid
-    /* Create child process */
-    char child_name[child_name_size];
-    snprintf(child_name, child_name_size, "%s-pid:%d", curproc->p_name, (int)child_pid);
-    child_proc = proc_create_fork(child_name);
+    // /* Get the next available PID for the parent */
+    // child_pid = issue_pid(); // TODO change such that pid issued when proc created not here
+    // /* Create child process */
+    // char child_name[child_name_size];
+    // snprintf(child_name, child_name_size, "%s-pid:%d", curproc->p_name, (int)child_pid);
+    // child_proc = proc_create_fork(child_name);
+
+    child_proc = proc_create_fork("child-process"); //TODO: confirm process name doesnt have to be unique
     if(child_proc == NULL){
         return ENOMEM;
     }
+    child_pid = child_proc->p_pid;
+
     /* Copy the parent filetable */
     filetable_copy(child_proc->p_filetable, curproc->p_filetable);
     kprintf("parent first filename %d, child first filename %d\n", curproc->p_filetable->ft_file_entries[0]->fe_status, child_proc->p_filetable->ft_file_entries[0]->fe_status);
@@ -87,10 +91,12 @@ sys_fork(struct trapframe *tf, pid_t *retval)
     child_tf->tf_epc = child_tf->tf_epc + 4;
 
     /* Make kernel thread for child */
-    char child_thread_name[12];
-    snprintf(child_thread_name, 12, "%d-thread", (int)child_pid);
+    // char child_thread_name[12];
+    // snprintf(child_thread_name, 12, "%d-thread", (int)child_pid);
     
-    err = thread_fork(child_thread_name, child_proc, enter_new_forked_process, child_tf, 0);
+    // err = thread_fork(child_thread_name, child_proc, enter_new_forked_process, child_tf, 0);
+    err = thread_fork("child-thread", child_proc, enter_new_forked_process, child_tf, 0);
+
     if(err){
         kfree(child_tf);
         proc_destroy(child_proc);
@@ -116,15 +122,14 @@ enter_new_forked_process(void *data1, unsigned long data2){
 
 
     as_activate();
-    kprintf("after as activate\n");
     kprintf("Current process is: %s\n", curproc->p_name);
     mips_usermode(tf);
 }
 
 pid_t
 sys_getpid(){
-    kprintf("In sys_getpid!!");
-    return 5;
+    // kprintf("In sys_getpid, returning !");
+    return curproc->p_pid;
 }
 
 int 

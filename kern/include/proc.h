@@ -51,6 +51,7 @@ struct proc {
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
 	struct threadarray p_threads;	/* Threads in this process */
+	pid_t p_pid;	/* The process' PID */
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */
@@ -61,7 +62,6 @@ struct proc {
 	/* add more material here as needed */
 	/* Filetable */
 	struct filetable *p_filetable;
-	pid_t p_last_issued_pid; /* TODO: BRUHHHH */
 };
 
 /* 
@@ -107,6 +107,6 @@ struct addrspace *proc_getas(void);
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *);
 
-pid_t issue_pid(void); // TODO CHANGE
+pid_t issue_pid(void);
 void init_pid_table(void);
 #endif /* _PROC_H_ */

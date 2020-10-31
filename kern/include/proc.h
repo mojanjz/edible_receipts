@@ -64,6 +64,22 @@ struct proc {
 	pid_t p_last_issued_pid; /* TODO: BRUHHHH */
 };
 
+/* 
+ * PID table structure.
+ */
+struct pid_table{
+	struct lock *pid_table_lk; /* lock to synchronize children table */
+	/* Data structure for storing information of children PIDs, statuses, and processes? */
+	/* TODO: decide whether to represent this as two arrays, or a 2D array, for now just store statuses for each pid */
+	
+	/* Index number in the array represents the PID corresponding to that process */
+	int process_statuses[__PID_MAX]; //TODO: should this be __PID_MAX +1 ?
+
+};
+
+/* This is the globally accessible pid_table */
+extern struct pid_table *pid_table;
+
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;
 
@@ -92,4 +108,5 @@ struct addrspace *proc_getas(void);
 struct addrspace *proc_setas(struct addrspace *);
 
 pid_t issue_pid(void); // TODO CHANGE
+void init_pid_table(void);
 #endif /* _PROC_H_ */

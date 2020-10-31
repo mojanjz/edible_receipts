@@ -42,6 +42,9 @@
  * process that will have more than one thread is the kernel process.
  */
 
+#define	AVAILABLE	0 /* PID available */
+#define	OCCUPIED	1 /* PID is in use by a running child process */
+
 #include <types.h>
 #include <spl.h>
 #include <proc.h>
@@ -55,6 +58,11 @@
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
+
+/*
+ *The global table for all processes and their PIDs.
+ */
+struct pid_table *pid_table;
 
 /*
  * Create a proc structure.
@@ -376,10 +384,54 @@ proc_setas(struct addrspace *newas)
 	return oldas;
 }
 
+
+/* Functions related to PID management */
+
 pid_t
 issue_pid()
 {
-	pid_t new_pid = curproc->p_last_issued_pid + 1;
-	curproc->p_last_issued_pid = new_pid;
+	//TODO: Synchronize this method!
+
+	pid_t new_pid = 0; /* If new_pid isn't assigned, return zero to signify error */
+	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
+		if (pid_table->process_statuses[i] == AVAILABLE){ //TODO: init pid table
+			kprintf("An available PID was found %d\n",i);
+			new_pid = i;
+			break;
+		}
+	}
+	
+	/* Check that PID was correctly assigned */
+	if(new_pid == 0){
+		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE!
+		kprintf("There are no available PIDs\n");
+	}
+	kprintf("The pid for this process is %d\n", new_pid);
 	return new_pid;
+}
+
+void 
+init_pid_table()
+{
+	kprintf("Initializing PID table\n");
+	//TODO: set value for each entry to be available, allocate memory.
+	pid_table = kmalloc(sizeof(struct pid_table));
+	if (pid_table == NULL){
+		//TODO: check that panic is the right way to handle 
+		panic("Error trying to initialize pid table.\n");
+	}
+
+	pid_table->pid_table_lk = lock_create("PID-table-lock");
+	if (pid_table->pid_table_lk == NULL){
+		panic("Error trying to make pid table lock.\n");
+	}
+
+	/* Assign special PID values to be occupied */
+	pid_table->process_statuses[0] = OCCUPIED;
+	pid_table->process_statuses[1] = OCCUPIED;
+	
+	/* Loop over PIDs and make them available */
+	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
+		pid_table->process_statuses[i] = AVAILABLE;
+	}
 }

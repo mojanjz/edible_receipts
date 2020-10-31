@@ -121,6 +121,12 @@ enter_new_forked_process(void *data1, unsigned long data2){
     mips_usermode(tf);
 }
 
+pid_t
+sys_getpid(){
+    kprintf("In sys_getpid!!");
+    return 5;
+}
+
 int 
 sys_execv(userptr_t program, userptr_t args)
 {

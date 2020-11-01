@@ -96,6 +96,8 @@ sys_fork(struct trapframe *tf, pid_t *retval)
         proc_destroy(child_proc);
         return err;
     }
+    // V on the parent ready
+    // P child ready 
     /* Update parent's retval */
     tf->tf_v0 = child_pid;
 
@@ -106,16 +108,13 @@ void
 enter_new_forked_process(void *data1, unsigned long data2){
     (void)data2;
 
-    void * tf = (void *) curthread->t_stack + 16; //TODO: BRUH WHAT!
-    memcpy(tf, (const void *)data1, sizeof(struct trapframe));
-    kfree((struct trapframe *)data1);
+    struct trapframe *tf = data1;
 
-    // kprintf("In enter new forked process");
-    // struct trapframe *tf = data1;
-
-
+// P parent ready semphore
 
     as_activate();
+    // signal to parent that you are going into user mode 
+// V child ready semaphore 
     kprintf("after as activate\n");
     kprintf("Current process is: %s\n", curproc->p_name);
     mips_usermode(tf);
@@ -162,7 +161,6 @@ copy_in_args(userptr_t args, char **kargs)
 
     int i = 0;
     do {
-
     } while (kargs[i]!= NULL);
     return 0;
 }

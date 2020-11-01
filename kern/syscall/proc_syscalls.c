@@ -26,7 +26,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
 #include <types.h>
 #include <clock.h>
 #include <copyinout.h>
@@ -48,8 +47,12 @@
 #include <limits.h>
 #include <addrspace.h>
 #include <mips/trapframe.h>
+#include <vfs.h>
 
-int copy_in_args(userptr_t args, char **kargs);
+
+int copy_in_args(userptr_t args, char **kargs, int argc, int *size_arr);
+int copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr);
+int get_argc(userptr_t args, int *argc);
 
 int
 sys_fork(struct trapframe *tf, pid_t *retval)
@@ -76,7 +79,7 @@ sys_fork(struct trapframe *tf, pid_t *retval)
 
     /* Copy the parent filetable */
     filetable_copy(child_proc->p_filetable, curproc->p_filetable);
-    kprintf("parent first filename %d, child first filename %d\n", curproc->p_filetable->ft_file_entries[0]->fe_status, child_proc->p_filetable->ft_file_entries[0]->fe_status);
+    // kprintf("parent first filename %d, child first filename %d\n", curproc->p_filetable->ft_file_entries[0]->fe_status, child_proc->p_filetable->ft_file_entries[0]->fe_status);
 
     /* Copy the parent's trapframe */
     struct trapframe *child_tf = (struct trapframe *)kmalloc(sizeof(struct trapframe));
@@ -114,18 +117,12 @@ void
 enter_new_forked_process(void *data1, unsigned long data2){
     (void)data2;
 
-    struct trapframe *tf = data1;
-
-// P parent ready semphore
+    struct trapframe *tf = curthread->t_stack+16; //trapframe should be on the stack
+    memcpy(tf, (const void *)data1, sizeof(struct trapframe));
+    kfree((struct trapframe *)data1);
 
     as_activate();
-<<<<<<< HEAD
-    // signal to parent that you are going into user mode 
-// V child ready semaphore 
-    kprintf("after as activate\n");
-=======
->>>>>>> 1f3edf7039de93becd7de77343c69789998d6d58
-    kprintf("Current process is: %s\n", curproc->p_name);
+    // kprintf("Current process is: %s\n", curproc->p_name);
     mips_usermode(tf);
 }
 
@@ -138,8 +135,13 @@ sys_getpid(){
 int 
 sys_execv(userptr_t program, userptr_t args)
 {
-    int err = 0;
-    (void)args;
+    kprintf("in execv\n");
+    struct addrspace *as;
+    struct vnode *v;
+    vaddr_t entrypoint, stackptr;
+    int result;
+    int argc = 0;
+
     /* Copy program name in*/
     char *kernel_progname;
 
@@ -148,34 +150,133 @@ sys_execv(userptr_t program, userptr_t args)
         return ENOMEM;
     }
 
-    err = copyinstr(program, kernel_progname, __PATH_MAX, NULL);
-    if (err) {
+    result = copyinstr(program, kernel_progname, __PATH_MAX, NULL);
+    if (result) {
         kfree(kernel_progname);
-        return err;
+        return result;
     }
 
-    /* copy arguements in */
-    char **kargs;
-
-    kargs = kmalloc(__ARG_MAX*(sizeof(char *))); // TODO: can get the actual number of arguements instead of using ARGMAX
-    err = copy_in_args(args, kargs);
+    /* Get the size of arguments array */
+    result = get_argc(args, &argc);
+    if (result) {
+        kfree(kernel_progname);
+        return result;
+    }
     
+    /* Copy in the arguments */
+    char **kargs; 
+    int *size_arr = kmalloc(argc*(sizeof(int))); // array to store size of all arguments
+    kargs = kmalloc(argc*(sizeof(char *))); // TODO: can optimize by kmallocing each pointer
+    result = copy_in_args(args, kargs, argc, size_arr);
+    if (result) {
+        goto fail;
+    }
 
+    /* Create a new address space */
+    as = as_create();
+    if (as == NULL) {
+        result = ENOMEM;
+        goto fail;
+    }
     
+    /* Open the file */
+    result = vfs_open(kernel_progname, O_RDONLY, 0, &v);
+    if (result) {
+        vfs_close(v);
+        goto fail;
+    }
+
+    /* Switch to it and activate it. */
+    struct addrspace *old_as = proc_setas(as); //TODO: restore if failure happens
+    (void) old_as;
+    as_activate();
+
     /* Load the executable and run it */
+    result = load_elf(v, &entrypoint);
+    (void)entrypoint;
+    if (result) {
+        vfs_close(v);
+        goto fail;
+    }
+
+    vfs_close(v);
+
+    /* Define the user stack in the address space */
+    result = as_define_stack(as, &stackptr);
+    if (result) {
+        goto fail;
+    }
+
     /* Copy arguments from kernel to user stack */
+    result = copy_out_args(kargs, &stackptr, argc, size_arr);
+
+    /* Clean up the old as */
     /* Return to user mode */
-    return -1; // should never get here
+    return EINVAL; // should never get here
+
+fail:
+    kfree(kernel_progname);
+    kfree(kargs);
+    kfree(size_arr);
+    return result;
 }
 
 int
-copy_in_args(userptr_t args, char **kargs)
+get_argc(userptr_t args, int *argc)
 {
-    (void)args;
-    (void)kargs;
-
+    char *copied_val;
     int i = 0;
     do {
-    } while (kargs[i]!= NULL);
+        copyin((const_userptr_t) &args[i], (void *) &copied_val, (size_t) (sizeof(char *)));
+        i++;
+    } 
+    while(copied_val != NULL && i < ARG_MAX);
+
+    if(i==ARG_MAX) {
+        return E2BIG; // too many arguments
+    }
+
+    *argc = i-1; // null is not included
+    return 0; // size of the args array
+
+}
+
+int
+copy_in_args(userptr_t args, char **kargs, int argc, int *size_arr)
+{
+    int err = 0;
+    size_t actual_size;
+
+    for (int i=0; i<argc; i++) {
+        err = copyinstr((const_userptr_t) &args[i], (char *) &kargs[i], (size_t) (sizeof(char *)), &actual_size);
+        size_arr[i] = (int) actual_size;
+
+        if(err) {
+            return err;
+        }
+    }
+
+    return 0;
+}
+
+int
+copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr)
+{
+    int result =0;
+    size_t actual_size = 0;
+    (void)stackptr;
+    (void) kargs;
+    (void)actual_size; 
+
+    for (int i=0; i<argc; i++) {
+        // result = copyoutstr((char *) &kargs[i], (const_user_ptr_t)args, (size_t) size_arr[i], &actual_size);
+
+        if(result) {
+            return result;
+        }
+        kprintf("actual size in copy out is %d\n", actual_size);
+        kprintf("the size in the size array is %d\n", size_arr[i]);
+        KASSERT(actual_size == (size_t) size_arr[i]); // sanity check
+    }
     return 0;
 }

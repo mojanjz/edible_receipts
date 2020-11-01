@@ -257,6 +257,8 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     struct filetable *ft = curproc->p_filetable;
     struct iovec iov;
     struct uio user_uio;
+    bool locked;
+    off_t pos;
 
     /* Check for invalid file descriptor or unopened files */
     if (fd < 0 || fd > __OPEN_MAX-1) { 
@@ -272,7 +274,16 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     lock_release(ft->ft_lock);
 
     struct file_entry *fe = ft->ft_file_entries[fd];
-    lock_acquire(fe->fe_lock);
+    /* Only lock the seek position if we're really using it. */
+    locked = VOP_ISSEEKABLE(fe->fe_vn);
+    if (locked) {
+        lock_acquire(fe->fe_lock);
+        pos = fe->fe_offset;
+    }
+    else {
+        pos = 0;
+    }
+
     int how = fe->fe_status & O_ACCMODE;
 
     /* Check if file is opened for writing */
@@ -282,7 +293,6 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     }
 
     /* Perform actual write opperation */
-    off_t pos = fe->fe_offset;
     uio_uinit(&iov, &user_uio, buf, nbytes, pos, UIO_WRITE);
     err = VOP_WRITE(fe->fe_vn, &user_uio);
     if (err) {
@@ -292,9 +302,12 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     }
 
     *retval = user_uio.uio_offset - pos;
+    
+    if(locked) {
+        fe->fe_offset += *retval;
+        lock_release(fe->fe_lock);
+    }
 
-    fe->fe_offset += *retval;
-    lock_release(fe->fe_lock);
     return 0;
 }
 

@@ -42,6 +42,9 @@
  * process that will have more than one thread is the kernel process.
  */
 
+#define	AVAILABLE	0 /* PID available */
+#define	OCCUPIED	1 /* PID is in use by a running child process */
+
 #include <types.h>
 #include <spl.h>
 #include <proc.h>
@@ -55,6 +58,11 @@
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
+
+/*
+ *The global table for all processes and their PIDs.
+ */
+struct pid_table *pid_table;
 
 /*
  * Create a proc structure.
@@ -91,7 +99,7 @@ proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 	/* PID Initialization */
-	proc->p_last_issued_pid = __PID_MIN; // TODO CHANGE
+	proc->p_pid = 1; /* Kernel thread has special pid value 1, set this as default pid value */
 
 	return proc;
 }
@@ -236,6 +244,9 @@ proc_create_runprogram(const char *name)
 	}
 	spinlock_release(&curproc->p_lock);
 
+	/* Assign PID value of new process */
+	newproc->p_pid = issue_pid();
+
 	return newproc;
 }
 
@@ -245,7 +256,6 @@ proc_create_fork(const char *name){
 	int err = 0;
 	
 	child_proc = proc_create(name);
-	kprintf("Checkpoint 2");
 	if(child_proc == NULL){
 		return NULL;//TODO: improve error handling
 	}
@@ -262,7 +272,10 @@ proc_create_fork(const char *name){
 	child_proc->p_addrspace = child_as;
     // proc_setas(child_as);
 
-    kprintf("the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
+	/* Assign PID value of child process */
+	child_proc->p_pid = issue_pid();
+
+    kprintf("Creating fork: the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
 
 	return child_proc;
 }
@@ -376,10 +389,57 @@ proc_setas(struct addrspace *newas)
 	return oldas;
 }
 
+
+/* Functions related to PID management */
+
 pid_t
 issue_pid()
 {
-	pid_t new_pid = curproc->p_last_issued_pid + 1;
-	curproc->p_last_issued_pid = new_pid;
+	pid_t new_pid = 0; /* If new_pid isn't assigned, return zero to signify error */
+	
+	//TODO: Test synchronization of this method!
+	lock_acquire(pid_table->pid_table_lk); /* Lock whole PID table so that statuses dont change during check */
+	
+	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
+		if (pid_table->process_statuses[i] == AVAILABLE){ //TODO: init pid table
+			new_pid = i;
+			pid_table->process_statuses[i] = OCCUPIED;
+			break;
+		}
+	}
+
+	lock_release(pid_table->pid_table_lk);
+	
+	/* Check that PID was correctly assigned */
+	if(new_pid == 0){
+		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE!
+	}
+	kprintf("The pid for this process is %d\n", new_pid);
+	
+	
 	return new_pid;
+}
+
+void 
+init_pid_table()
+{
+	pid_table = kmalloc(sizeof(struct pid_table));
+	if (pid_table == NULL){
+		//TODO: check that panic is the right way to handle 
+		panic("Error trying to initialize pid table.\n");
+	}
+
+	pid_table->pid_table_lk = lock_create("PID-table-lock");
+	if (pid_table->pid_table_lk == NULL){
+		panic("Error trying to make pid table lock.\n");
+	}
+
+	/* Assign special PID values to be occupied */
+	pid_table->process_statuses[0] = OCCUPIED;
+	pid_table->process_statuses[1] = OCCUPIED;
+	
+	/* Loop over PIDs and make them available */
+	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
+		pid_table->process_statuses[i] = AVAILABLE;
+	}
 }

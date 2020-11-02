@@ -42,9 +42,6 @@
  * process that will have more than one thread is the kernel process.
  */
 
-#define	AVAILABLE	0 /* PID available */
-#define	OCCUPIED	1 /* PID is in use by a running child process */
-
 #include <types.h>
 #include <spl.h>
 #include <proc.h>
@@ -84,6 +81,13 @@ proc_create(const char *name)
 	}
 	proc->p_filetable = filetable_init();
 	if (proc->p_filetable == NULL) {
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
+	proc->p_children = array_create();
+	if (proc->p_children == NULL) {
+		kfree(proc->p_filetable);
 		kfree(proc->p_name);
 		kfree(proc);
 		return NULL;
@@ -135,6 +139,12 @@ proc_destroy(struct proc *proc)
 		VOP_DECREF(proc->p_cwd);
 		proc->p_cwd = NULL;
 	}
+	/* Process PID fields */
+	int p_children_size = array_num(proc->p_children);
+	for (int i = 0; i < p_children_size; i++){
+		array_remove(proc->p_children, 0); /* Empty the array, one element at a time */
+	}
+	array_destroy(proc->p_children);
 
 	/* VM fields */
 	if (proc->p_addrspace) {

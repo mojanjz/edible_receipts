@@ -35,6 +35,8 @@
  *
  * Note: curproc is defined by <current.h>.
  */
+#define	AVAILABLE	0 /* PID available */
+#define	OCCUPIED	1 /* PID is in use by a running child process */
 
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
@@ -52,6 +54,9 @@ struct proc {
 	struct spinlock p_lock;		/* Lock for this structure */
 	struct threadarray p_threads;	/* Threads in this process */
 	pid_t p_pid;	/* The process' PID */
+
+	pid_t p_ppid;	/* The process' parent's PID TODO: Check if we still need this*/
+	struct array *p_children;	/* An array of the process' children's PIDs */
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */

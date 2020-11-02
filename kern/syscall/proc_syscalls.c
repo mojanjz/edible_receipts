@@ -132,6 +132,47 @@ sys_getpid(){
     return curproc->p_pid;
 }
 
+pid_t
+sys_waitpid(pid_t pid, int *status, int options)
+{
+    (void)pid;
+    (void)status;
+    (void)options;
+
+    /* Options are not supported */
+    if (options != 0){
+        return EINVAL;
+    }
+    /* Make sure waitpid being called on an existant process */
+    if (pid > __PID_MAX || pid < __PID_MIN || pid_table->process_statuses[pid] == AVAILABLE){
+        return ESRCH;
+    }
+    /* Make sure that pid argument names a process that is a child of curent process */
+    if (!isChild(pid)){
+        return ECHILD;
+    }
+    //TODO: 
+    return 0; //TODO: fix
+}
+
+/* Checks if process with PID pid is a child of curent process */
+bool
+isChild(pid_t pid)
+{
+    bool is_child = false;
+    int num_children = array_num(curproc->p_children);
+    
+    for (int i = 0; i < num_children; i++){
+        if ((pid_t)array_get(curproc->p_children,i) == pid){
+            is_child = true;
+            break;
+        }
+    }
+
+    kprintf("Is this a child of the parent? %s", is_child ? "true" : "false");
+    return is_child;
+}
+
 int 
 sys_execv(userptr_t program, userptr_t args)
 {

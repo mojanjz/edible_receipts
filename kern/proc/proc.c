@@ -254,8 +254,8 @@ proc_create_runprogram(const char *name)
 	}
 	spinlock_release(&curproc->p_lock);
 
-	/* Assign PID value of new process */
-	newproc->p_pid = issue_pid();
+	/* PID Fields */
+	configure_pid_fields(newproc);
 
 	return newproc;
 }
@@ -282,8 +282,8 @@ proc_create_fork(const char *name){
 	child_proc->p_addrspace = child_as;
     // proc_setas(child_as);
 
-	/* Assign PID value of child process */
-	child_proc->p_pid = issue_pid();
+	/* PID Fields */
+	configure_pid_fields(child_proc);
 
     kprintf("Creating fork: the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
 
@@ -422,12 +422,25 @@ issue_pid()
 	
 	/* Check that PID was correctly assigned */
 	if(new_pid == 0){
-		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE!
+		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE! ENPROC
+		kprintf("There are no available PIDS!");
 	}
 	kprintf("The pid for this process is %d\n", new_pid);
 	
 	
 	return new_pid;
+}
+
+void
+configure_pid_fields(struct proc *child_proc)
+{
+	//TODO: test synchronization
+	child_proc->p_pid = issue_pid(); //Already locked
+	child_proc->p_ppid = curproc->p_pid;
+	spinlock_acquire(&curproc->p_lock);
+	array_add(curproc->p_children, (void *)child_proc->p_pid, NULL);
+	spinlock_release(&curproc->p_lock);
+	kprintf("Filling out PID fields of newproc w PID %d, pPID %d", child_proc->p_pid, child_proc->p_ppid);
 }
 
 void 

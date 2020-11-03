@@ -113,5 +113,6 @@ struct addrspace *proc_getas(void);
 struct addrspace *proc_setas(struct addrspace *);
 
 pid_t issue_pid(void);
+void configure_pid_fields(struct proc *child_proc);
 void init_pid_table(void);
 #endif /* _PROC_H_ */

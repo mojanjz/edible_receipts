@@ -163,7 +163,7 @@ isChild(pid_t pid)
     int num_children = array_num(curproc->p_children);
     
     for (int i = 0; i < num_children; i++){
-        if ((pid_t)array_get(curproc->p_children,i) == pid){
+        if ((pid_t)array_get(curproc->p_children,i) == pid){ /* TODO: Check that this cast does what is expected */
             is_child = true;
             break;
         }

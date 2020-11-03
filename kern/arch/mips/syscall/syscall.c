@@ -171,6 +171,17 @@ syscall(struct trapframe *tf)
 		err = sys_getpid();
 		break;
 
+		case SYS_waitpid:
+		err = sys_waitpid((pid_t)tf->tf_a0, (int32_t *)tf->tf_a1, (int32_t)tf->tf_a2);
+		break;
+
+		case SYS__exit: ;
+		//https://stackoverflow.com/questions/18496282/why-do-i-get-a-label-can-only-be-part-of-a-statement-and-a-declaration-is-not-a
+		int exitcode = (int)(tf->tf_a0); //TODO: confirm this is right approach - bruh
+		sys__exit(exitcode); //TODO: confirm no err result
+		//TODO: exit should never return
+		break;
+
 		case SYS_execv:
 		err = sys_execv((userptr_t)tf->tf_a0,
 						(char **)tf->tf_a1);

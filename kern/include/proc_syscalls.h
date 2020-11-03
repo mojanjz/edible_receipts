@@ -37,4 +37,7 @@ int sys_fork(struct trapframe *tf, pid_t *retval);
 int sys_execv(userptr_t program, char **args);
 void enter_new_forked_process(void *data1, unsigned long data2);
 pid_t sys_getpid(void);
+pid_t sys_waitpid(pid_t pid, int *status, int options);
+bool isChild(pid_t pid);
+void sys__exit(int exitcode);
 #endif

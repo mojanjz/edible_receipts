@@ -132,6 +132,96 @@ sys_getpid(){
     return curproc->p_pid;
 }
 
+pid_t
+sys_waitpid(pid_t pid, int *status, int options)
+{
+    (void)pid;
+    (void)status;
+    (void)options;
+
+    /* Options are not supported */
+    if (options != 0){
+        return EINVAL;
+    }
+    /* Make sure waitpid being called on an existant process */
+    if (pid > __PID_MAX || pid < __PID_MIN || pid_table->process_statuses[pid] == AVAILABLE){
+        return ESRCH;
+    }
+    /* Make sure that pid argument names a process that is a child of curent process */
+    if (!isChild(pid)){
+        return ECHILD;
+    }
+    //TODO: 
+    return 0; //TODO: fix
+}
+
+/* Checks if process with PID pid is a child of curent process */
+bool
+isChild(pid_t pid)
+{
+    bool is_child = false;
+    int num_children = array_num(curproc->p_children);
+    
+    for (int i = 0; i < num_children; i++){
+        if ((pid_t)array_get(curproc->p_children,i) == pid){ /* TODO: Check that this cast does what is expected */
+            is_child = true;
+            break;
+        }
+    }
+
+    kprintf("Is this a child of the parent? %s", is_child ? "true" : "false");
+    return is_child;
+}
+
+void
+sys__exit(int exitcode)
+{
+    lock_acquire(pid_table->pid_table_lk);
+
+    /* Update children */
+    for (unsigned i = 0; i < array_num(curproc->p_children); i++){
+        /* If child is an running, make an orphan */
+        pid_t child_pid = (int)array_get(curproc->p_children,i);
+        if (pid_table->process_statuses[child_pid] == OCCUPIED){
+            pid_table->process_statuses[child_pid] = ORPHAN;
+        } 
+        /* If child is a zombie, destroy it */
+        else if (pid_table->process_statuses[child_pid] == ZOMBIE){ 
+            proc_destroy(pid_table->processes[child_pid]);
+            delete_pid_entry(child_pid);
+        } else {
+            //TODO: fix error handling
+            kprintf("CHILD STATUS IS INVALID IN SYS__EXIT");
+        }  
+    }
+
+    /* Update process */
+    /* Process is orphan: no parent waiting on it, proceed by destroying */
+    if (pid_table->process_statuses[curproc->p_pid] == ORPHAN){
+        delete_pid_entry(curproc->p_pid);
+        proc_destroy(curproc); //TODO: check order of these two operations
+    }
+    /* Process has a parent: signal to parent that the process has finished & don't destroy yet*/
+    else if (pid_table->process_statuses[curproc->p_pid] == OCCUPIED){
+        pid_table->process_exitcodes[curproc->p_pid] = exitcode;
+        pid_table->process_statuses[curproc->p_pid] = ZOMBIE;
+    } else {
+        //TODO: fix error handling
+        kprintf("PROCESS STATUS IS INVALID IN SYS__EXIT");
+    }
+
+    //TODO: implement condition variable and broadcast here
+
+    lock_release(pid_table->pid_table_lk);
+    /* Last command that should run, shouldn't return */
+    thread_exit();
+    /*  
+     * ------------------------------
+     *process should never get this far
+     */
+    //TODO: add panic?
+}
+
 int 
 sys_execv(userptr_t program, char **args)
 {

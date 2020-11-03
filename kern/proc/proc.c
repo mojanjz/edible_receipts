@@ -42,9 +42,6 @@
  * process that will have more than one thread is the kernel process.
  */
 
-#define	AVAILABLE	0 /* PID available */
-#define	OCCUPIED	1 /* PID is in use by a running child process */
-
 #include <types.h>
 #include <spl.h>
 #include <proc.h>
@@ -84,6 +81,13 @@ proc_create(const char *name)
 	}
 	proc->p_filetable = filetable_init();
 	if (proc->p_filetable == NULL) {
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
+	proc->p_children = array_create();
+	if (proc->p_children == NULL) {
+		kfree(proc->p_filetable);
 		kfree(proc->p_name);
 		kfree(proc);
 		return NULL;
@@ -135,6 +139,12 @@ proc_destroy(struct proc *proc)
 		VOP_DECREF(proc->p_cwd);
 		proc->p_cwd = NULL;
 	}
+	/* Process PID fields */
+	int p_children_size = array_num(proc->p_children);
+	for (int i = 0; i < p_children_size; i++){
+		array_remove(proc->p_children, 0); /* Empty the array, one element at a time */
+	}
+	array_destroy(proc->p_children);
 
 	/* VM fields */
 	if (proc->p_addrspace) {
@@ -244,8 +254,8 @@ proc_create_runprogram(const char *name)
 	}
 	spinlock_release(&curproc->p_lock);
 
-	/* Assign PID value of new process */
-	newproc->p_pid = issue_pid();
+	/* PID Fields */
+	configure_pid_fields(newproc);
 
 	return newproc;
 }
@@ -272,8 +282,8 @@ proc_create_fork(const char *name){
 	child_proc->p_addrspace = child_as;
     // proc_setas(child_as);
 
-	/* Assign PID value of child process */
-	child_proc->p_pid = issue_pid();
+	/* PID Fields */
+	configure_pid_fields(child_proc);
 
     kprintf("Creating fork: the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
 
@@ -401,7 +411,7 @@ issue_pid()
 	lock_acquire(pid_table->pid_table_lk); /* Lock whole PID table so that statuses dont change during check */
 	
 	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
-		if (pid_table->process_statuses[i] == AVAILABLE){ //TODO: init pid table
+		if (pid_table->process_statuses[i] == AVAILABLE){
 			new_pid = i;
 			pid_table->process_statuses[i] = OCCUPIED;
 			break;
@@ -412,12 +422,36 @@ issue_pid()
 	
 	/* Check that PID was correctly assigned */
 	if(new_pid == 0){
-		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE!
+		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE! ENPROC
+		kprintf("There are no available PIDS!");
 	}
 	kprintf("The pid for this process is %d\n", new_pid);
 	
 	
 	return new_pid;
+}
+
+void
+configure_pid_fields(struct proc *child_proc)
+{
+	//TODO: test synchronization, change name to add pid entry
+	child_proc->p_pid = issue_pid(); //Already locked
+	child_proc->p_ppid = curproc->p_pid;
+	spinlock_acquire(&curproc->p_lock);
+	array_add(curproc->p_children, (void *)child_proc->p_pid, NULL);
+	*pid_table->processes = child_proc;
+	spinlock_release(&curproc->p_lock);
+
+	kprintf("Filling out PID fields of newproc w PID %d, pPID %d", child_proc->p_pid, child_proc->p_ppid);
+}
+
+/* Deletes an entry in the PID table */
+void
+delete_pid_entry(pid_t pid)
+{
+	pid_table->process_statuses[pid] = AVAILABLE;
+	pid_table->processes[pid] = NULL;
+	pid_table->process_exitcodes[pid] = (int) NULL;
 }
 
 void 

@@ -35,6 +35,11 @@
  *
  * Note: curproc is defined by <current.h>.
  */
+#define	AVAILABLE	0 /* PID available */
+#define	OCCUPIED	1 /* PID is in use by a running process */
+#define ORPHAN		2 /* PID of a running process with no parent */
+#define ZOMBIE		3 /* PID of a process that has finished and is waiting to be cleaned up */
+
 
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
@@ -52,6 +57,9 @@ struct proc {
 	struct spinlock p_lock;		/* Lock for this structure */
 	struct threadarray p_threads;	/* Threads in this process */
 	pid_t p_pid;	/* The process' PID */
+
+	pid_t p_ppid;	/* The process' parent's PID TODO: Check if we still need this*/
+	struct array *p_children;	/* An array of the process' children's PIDs */
 
 	/* VM */
 	struct addrspace *p_addrspace;	/* virtual address space */
@@ -72,8 +80,13 @@ struct pid_table{
 	/* Data structure for storing information of children PIDs, statuses, and processes? */
 	/* TODO: decide whether to represent this as two arrays, or a 2D array, for now just store statuses for each pid */
 	
-	/* Index number in the array represents the PID corresponding to that process */
+	/* Note: Index number in the arrays represents the corresponding PID of entry*/
+	/* Array of process statuses, as defined above */
 	int process_statuses[__PID_MAX]; //TODO: should this be __PID_MAX +1 ?
+	/* Array of processes */
+	struct proc *processes[__PID_MAX];
+	/* Array of process exit codes */
+	int process_exitcodes[__PID_MAX];
 
 };
 
@@ -108,5 +121,7 @@ struct addrspace *proc_getas(void);
 struct addrspace *proc_setas(struct addrspace *);
 
 pid_t issue_pid(void);
+void configure_pid_fields(struct proc *child_proc);
 void init_pid_table(void);
+void delete_pid_entry(pid_t pid);
 #endif /* _PROC_H_ */

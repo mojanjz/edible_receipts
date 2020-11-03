@@ -228,7 +228,6 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *retval)
     uio_uinit(&iov, &user_uio, buf, buflen, pos, UIO_READ);
     err = VOP_READ(fe->fe_vn, &user_uio);
     if (err) {
-        kprintf("%s: Read error: %s\n", fe->fe_filename, strerror(err));
         lock_release(fe->fe_lock);
         return err;
     }
@@ -296,7 +295,6 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *retval)
     uio_uinit(&iov, &user_uio, buf, nbytes, pos, UIO_WRITE);
     err = VOP_WRITE(fe->fe_vn, &user_uio);
     if (err) {
-        kprintf("%s: Write error: %s\n", fe->fe_filename, strerror(err));
         lock_release(fe->fe_lock);
         return err;
     }

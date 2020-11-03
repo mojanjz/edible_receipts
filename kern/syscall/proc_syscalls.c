@@ -50,9 +50,9 @@
 #include <vfs.h>
 
 
-int copy_in_args(userptr_t args, char **kargs, int argc, int *size_arr);
-int copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr);
-int get_argc(userptr_t args, int *argc);
+int copy_in_args(char **args, char **kargs, int argc, int *size_arr);
+int copy_out_args(char **kargs, userptr_t argv, vaddr_t *stackptr, int argc, int *size_arr);
+int get_argc(char **args, int *argc);
 
 int
 sys_fork(struct trapframe *tf, pid_t *retval)
@@ -133,7 +133,7 @@ sys_getpid(){
 }
 
 int 
-sys_execv(userptr_t program, userptr_t args)
+sys_execv(userptr_t program, char **args)
 {
     kprintf("in execv\n");
     struct addrspace *as;
@@ -156,13 +156,15 @@ sys_execv(userptr_t program, userptr_t args)
         return result;
     }
 
+    kprintf("got the program name %s\n", kernel_progname);
+
     /* Get the size of arguments array */
     result = get_argc(args, &argc);
     if (result) {
         kfree(kernel_progname);
         return result;
     }
-    
+    kprintf("got the size of the arguments %d\n", argc);
     /* Copy in the arguments */
     char **kargs; 
     int *size_arr = kmalloc(argc*(sizeof(int))); // array to store size of all arguments
@@ -202,16 +204,25 @@ sys_execv(userptr_t program, userptr_t args)
     vfs_close(v);
 
     /* Define the user stack in the address space */
+    kprintf("stack ptr address before as_define_stack is %p\n", &stackptr);
     result = as_define_stack(as, &stackptr);
+    kprintf("stackptr address after as_define_stack is %p\n", &stackptr);
     if (result) {
         goto fail;
     }
 
     /* Copy arguments from kernel to user stack */
-    result = copy_out_args(kargs, &stackptr, argc, size_arr);
+    userptr_t argv_addr=(userptr_t) stackptr;
+    result = copy_out_args(kargs, argv_addr, &stackptr, argc, size_arr);
+    if (result) {
+        goto fail;
+    }
 
     /* Clean up the old as */
     /* Return to user mode */
+    enter_new_process(argc, (userptr_t)stackptr, NULL, stackptr, entrypoint);
+    /* enter process does not return. */
+    panic("enter_new_process returned \n");
     return EINVAL; // should never get here
 
 fail:
@@ -222,7 +233,7 @@ fail:
 }
 
 int
-get_argc(userptr_t args, int *argc)
+get_argc(char **args, int *argc)
 {
     char *copied_val;
     int i = 0;
@@ -242,13 +253,16 @@ get_argc(userptr_t args, int *argc)
 }
 
 int
-copy_in_args(userptr_t args, char **kargs, int argc, int *size_arr)
+copy_in_args(char **args, char **kargs, int argc, int *size_arr)
 {
     int err = 0;
     size_t actual_size;
 
     for (int i=0; i<argc; i++) {
-        err = copyinstr((const_userptr_t) &args[i], (char *) &kargs[i], (size_t) (sizeof(char *)), &actual_size);
+
+        err = copyinstr((const_userptr_t) args[i], kargs[i], (size_t) (sizeof(char *)), &actual_size);
+        kprintf("the actual size after copy in is %d\n", (int)actual_size);
+        kprintf("the argument is %s\n", kargs[i]);
         size_arr[i] = (int) actual_size;
 
         if(err) {
@@ -260,23 +274,24 @@ copy_in_args(userptr_t args, char **kargs, int argc, int *size_arr)
 }
 
 int
-copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr)
+copy_out_args(char **kargs, userptr_t argv, vaddr_t *stackptr, int argc, int *size_arr)
 {
     int result =0;
     size_t actual_size = 0;
     (void)stackptr;
     (void) kargs;
     (void)actual_size; 
+    (void)argv;
 
     for (int i=0; i<argc; i++) {
-        // result = copyoutstr((char *) &kargs[i], (const_user_ptr_t)args, (size_t) size_arr[i], &actual_size);
+        kprintf("size_arr %d is %d\n", i, size_arr[i]);
+        *stackptr = *stackptr-size_arr[i];
+        result = copyoutstr((char *) kargs[i], (userptr_t)*stackptr, (size_t) size_arr[i], &actual_size);
 
         if(result) {
+            kprintf("copy out error with error %s\n", strerror(result));
             return result;
         }
-        kprintf("actual size in copy out is %d\n", actual_size);
-        kprintf("the size in the size array is %d\n", size_arr[i]);
-        KASSERT(actual_size == (size_t) size_arr[i]); // sanity check
     }
     return 0;
 }

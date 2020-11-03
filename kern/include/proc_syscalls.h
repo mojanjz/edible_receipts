@@ -34,7 +34,7 @@
 #include <mips/trapframe.h>
 
 int sys_fork(struct trapframe *tf, pid_t *retval);
-int sys_execv(userptr_t program, userptr_t args);
+int sys_execv(userptr_t program, char **args);
 void enter_new_forked_process(void *data1, unsigned long data2);
 pid_t sys_getpid(void);
 #endif

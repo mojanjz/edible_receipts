@@ -55,7 +55,7 @@ int copy_out_args(char **kargs, userptr_t argv, vaddr_t *stackptr, int argc, int
 int get_argc(char **args, int *argc);
 
 int
-sys_fork(struct trapframe *tf, pid_t *retval)
+sys_fork(struct trapframe *tf, int *retval)
 {
     int err = 0;
     // size_t child_name_size = 100;
@@ -108,9 +108,9 @@ sys_fork(struct trapframe *tf, pid_t *retval)
     // V on the parent ready
     // P child ready 
     /* Update parent's retval */
-    tf->tf_v0 = child_pid;
-
-    return err; 
+    // tf->tf_v0 = child_pid;
+    *retval = (int) child_pid;
+    return 0; 
 }
 
 void
@@ -225,7 +225,7 @@ sys__exit(int exitcode)
 int 
 sys_execv(userptr_t program, char **args)
 {
-    kprintf("in execv\n");
+    kprintf("in execv for process with pid %d\n", curproc->p_pid);
     struct addrspace *as;
     struct vnode *v;
     vaddr_t entrypoint, stackptr;
@@ -280,7 +280,6 @@ sys_execv(userptr_t program, char **args)
 
     /* Switch to it and activate it. */
     struct addrspace *old_as = proc_setas(as); //TODO: restore if failure happens
-    (void) old_as;
     as_activate();
 
     /* Load the executable and run it */
@@ -288,16 +287,18 @@ sys_execv(userptr_t program, char **args)
     (void)entrypoint;
     if (result) {
         vfs_close(v);
+        proc_setas(old_as);
+        as_activate();
         goto fail;
     }
 
     vfs_close(v);
 
     /* Define the user stack in the address space */
-    kprintf("stack ptr address before as_define_stack is %p\n", &stackptr);
     result = as_define_stack(as, &stackptr);
-    kprintf("stackptr address after as_define_stack is %p\n", &stackptr);
     if (result) {
+        proc_setas(old_as);
+        as_activate();
         goto fail;
     }
 
@@ -305,10 +306,16 @@ sys_execv(userptr_t program, char **args)
     userptr_t argv_addr=(userptr_t) stackptr;
     result = copy_out_args(kargs, argv_addr, &stackptr, argc, size_arr);
     if (result) {
+        proc_setas(old_as);
+        as_activate();
         goto fail;
     }
 
-    /* Clean up the old as */
+    /* Clean up before user mode*/
+    as_destroy(old_as);
+    kfree(kernel_progname);
+    kfree(kargs);
+    kfree(size_arr);
     /* Return to user mode */
     enter_new_process(argc, (userptr_t)stackptr, NULL, stackptr, entrypoint);
     /* enter process does not return. */

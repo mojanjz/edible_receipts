@@ -411,7 +411,7 @@ issue_pid()
 	lock_acquire(pid_table->pid_table_lk); /* Lock whole PID table so that statuses dont change during check */
 	
 	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
-		if (pid_table->process_statuses[i] == AVAILABLE){ //TODO: init pid table
+		if (pid_table->process_statuses[i] == AVAILABLE){
 			new_pid = i;
 			pid_table->process_statuses[i] = OCCUPIED;
 			break;
@@ -434,13 +434,24 @@ issue_pid()
 void
 configure_pid_fields(struct proc *child_proc)
 {
-	//TODO: test synchronization
+	//TODO: test synchronization, change name to add pid entry
 	child_proc->p_pid = issue_pid(); //Already locked
 	child_proc->p_ppid = curproc->p_pid;
 	spinlock_acquire(&curproc->p_lock);
 	array_add(curproc->p_children, (void *)child_proc->p_pid, NULL);
+	*pid_table->processes = child_proc;
 	spinlock_release(&curproc->p_lock);
+
 	kprintf("Filling out PID fields of newproc w PID %d, pPID %d", child_proc->p_pid, child_proc->p_ppid);
+}
+
+/* Deletes an entry in the PID table */
+void
+delete_pid_entry(pid_t pid)
+{
+	pid_table->process_statuses[pid] = AVAILABLE;
+	pid_table->processes[pid] = NULL;
+	pid_table->process_exitcodes[pid] = (int) NULL;
 }
 
 void 

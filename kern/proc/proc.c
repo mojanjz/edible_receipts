@@ -468,6 +468,11 @@ init_pid_table()
 		panic("Error trying to make pid table lock.\n");
 	}
 
+	pid_table->pid_table_cv = cv_create("PID-table-cv");
+	if (pid_table->pid_table_cv == NULL){
+		panic("Error trying to make pid table condition variable.\n");
+	}
+
 	/* Assign special PID values to be occupied */
 	pid_table->process_statuses[0] = OCCUPIED;
 	pid_table->process_statuses[1] = OCCUPIED;

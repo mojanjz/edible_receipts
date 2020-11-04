@@ -139,6 +139,8 @@ sys_waitpid(pid_t pid, int *status, int options)
     (void)status;
     (void)options;
 
+    int exitcode;
+
     /* Options are not supported */
     if (options != 0){
         return EINVAL;
@@ -151,7 +153,23 @@ sys_waitpid(pid_t pid, int *status, int options)
     if (!isChild(pid)){
         return ECHILD;
     }
-    //TODO: 
+    
+    lock_acquire(pid_table->pid_table_lk);
+    while (pid_table->process_statuses[pid] == ZOMBIE){
+        cv_wait(pid_table->pid_table_cv, pid_table->pid_table_lk);
+        /* TODO: do i need to update status manually */
+    }
+    exitcode = pid_table->process_exitcodes[pid];
+
+    lock_release(pid_table->pid_table_lk);
+
+    if (status != NULL){
+        int retval = copyout(&exitcode, (userptr_t)status, sizeof(int32_t)); //TODO: is int32 the right thing to take the size of? should be size of exitcode
+        if (retval){
+            return retval;
+        }
+    }
+
     return 0; //TODO: fix
 }
 
@@ -211,6 +229,7 @@ sys__exit(int exitcode)
     }
 
     //TODO: implement condition variable and broadcast here
+    cv_broadcast(pid_table->pid_table_cv, pid_table->pid_table_lk);
 
     lock_release(pid_table->pid_table_lk);
     /* Last command that should run, shouldn't return */

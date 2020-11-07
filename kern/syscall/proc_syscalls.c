@@ -79,7 +79,6 @@ sys_fork(struct trapframe *tf, int *retval)
 
     /* Copy the parent filetable */
     filetable_copy(child_proc->p_filetable, curproc->p_filetable);
-    // kprintf("parent first filename %d, child first filename %d\n", curproc->p_filetable->ft_file_entries[0]->fe_status, child_proc->p_filetable->ft_file_entries[0]->fe_status);
 
     /* Copy the parent's trapframe */
     struct trapframe *child_tf = (struct trapframe *)kmalloc(sizeof(struct trapframe));
@@ -122,21 +121,17 @@ enter_new_forked_process(void *data1, unsigned long data2){
     kfree((struct trapframe *)data1);
 
     as_activate();
-    // kprintf("Current process is: %s\n", curproc->p_name);
     mips_usermode(tf);
 }
 
 pid_t
 sys_getpid(){
-    // kprintf("In sys_getpid, returning !");
     return curproc->p_pid;
 }
 
 pid_t
 sys_waitpid(pid_t pid, int *status, int options)
 {
-    kprintf("4");
-
     int exitcode;
 
     /* Options are not supported */
@@ -166,7 +161,6 @@ sys_waitpid(pid_t pid, int *status, int options)
             return retval;
         }
     }
-    kprintf("5");
     return 0; //TODO: fix
 }
 
@@ -184,7 +178,6 @@ isChild(pid_t pid)
         }
     }
 
-    // kprintf("Is this a child of the parent? %s", is_child ? "true" : "false");
     return is_child;
 }
 
@@ -196,9 +189,7 @@ sys__exit(int exitcode)
     /* Update children */
     for (unsigned i = 0; i < array_num(curproc->p_children); i++){
         /* If child is an running, make an orphan */
-        kprintf("6");
         pid_t child_pid = (int)array_get(curproc->p_children,i);
-        kprintf("7");
         if (pid_table->process_statuses[child_pid] == OCCUPIED){
             pid_table->process_statuses[child_pid] = ORPHAN;
         } 

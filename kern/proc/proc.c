@@ -144,7 +144,6 @@ proc_destroy(struct proc *proc)
 	for (int i = 0; i < p_children_size; i++){
 		array_remove(proc->p_children, 0); /* Empty the array, one element at a time */
 	}
-	array_destroy(proc->p_children);
 
 	/* VM fields */
 	if (proc->p_addrspace) {
@@ -196,6 +195,9 @@ proc_destroy(struct proc *proc)
 	filetable_destroy(proc->p_filetable);
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
+
+	kprintf("!");
+	array_destroy(proc->p_children);
 
 	kfree(proc->p_name);
 	kfree(proc);
@@ -285,7 +287,7 @@ proc_create_fork(const char *name){
 	/* PID Fields */
 	configure_pid_fields(child_proc);
 
-    kprintf("Creating fork: the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
+    // kprintf("Creating fork: the parent address space npages1 %zu and child is %zu\n", curproc->p_addrspace->as_npages1, child_proc->p_addrspace->as_npages1);
 
 	return child_proc;
 }
@@ -425,7 +427,7 @@ issue_pid()
 		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE! ENPROC
 		kprintf("There are no available PIDS!");
 	}
-	kprintf("The pid for this process is %d\n", new_pid);
+	// kprintf("The pid for this process is %d\n", new_pid);
 	
 	
 	return new_pid;
@@ -439,10 +441,10 @@ configure_pid_fields(struct proc *child_proc)
 	child_proc->p_ppid = curproc->p_pid;
 	spinlock_acquire(&curproc->p_lock);
 	array_add(curproc->p_children, (void *)child_proc->p_pid, NULL);
-	*pid_table->processes = child_proc;
+	pid_table->processes[child_proc->p_pid] = child_proc;
 	spinlock_release(&curproc->p_lock);
 
-	kprintf("Filling out PID fields of newproc w PID %d, pPID %d", child_proc->p_pid, child_proc->p_ppid);
+	// kprintf("Filling out PID fields of newproc w PID %d, pPID %d", child_proc->p_pid, child_proc->p_ppid);
 }
 
 /* Deletes an entry in the PID table */

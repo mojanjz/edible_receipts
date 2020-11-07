@@ -135,9 +135,7 @@ sys_getpid(){
 pid_t
 sys_waitpid(pid_t pid, int *status, int options)
 {
-    (void)pid;
-    (void)status;
-    (void)options;
+    kprintf("4");
 
     int exitcode;
 
@@ -153,9 +151,8 @@ sys_waitpid(pid_t pid, int *status, int options)
     if (!isChild(pid)){
         return ECHILD;
     }
-    
     lock_acquire(pid_table->pid_table_lk);
-    while (pid_table->process_statuses[pid] == ZOMBIE){
+    while (pid_table->process_statuses[pid] != ZOMBIE){
         cv_wait(pid_table->pid_table_cv, pid_table->pid_table_lk);
         /* TODO: do i need to update status manually */
     }
@@ -169,7 +166,7 @@ sys_waitpid(pid_t pid, int *status, int options)
             return retval;
         }
     }
-
+    kprintf("5");
     return 0; //TODO: fix
 }
 
@@ -187,7 +184,7 @@ isChild(pid_t pid)
         }
     }
 
-    kprintf("Is this a child of the parent? %s", is_child ? "true" : "false");
+    // kprintf("Is this a child of the parent? %s", is_child ? "true" : "false");
     return is_child;
 }
 
@@ -199,7 +196,9 @@ sys__exit(int exitcode)
     /* Update children */
     for (unsigned i = 0; i < array_num(curproc->p_children); i++){
         /* If child is an running, make an orphan */
+        kprintf("6");
         pid_t child_pid = (int)array_get(curproc->p_children,i);
+        kprintf("7");
         if (pid_table->process_statuses[child_pid] == OCCUPIED){
             pid_table->process_statuses[child_pid] = ORPHAN;
         } 

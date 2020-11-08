@@ -279,7 +279,10 @@ sys_execv(userptr_t program, char **args)
     kargs = kmalloc(argc*(sizeof(char *))); // TODO: can optimize by kmallocing each pointer
     result = copy_in_args(args, kargs, argc, size_arr);
     if (result) {
-        goto fail;
+        kfree(kargs);
+        kfree(size_arr);
+        kfree(kernel_progname);
+        return result;
     }
 
     /* Create a new address space */
@@ -330,10 +333,14 @@ sys_execv(userptr_t program, char **args)
     }
 
     /* Clean up before user mode*/
+    for(int i=0; i<argc; i++) {
+        kfree(kargs[i]);
+    }
     as_destroy(old_as);
     kfree(kernel_progname);
     kfree(kargs);
     kfree(size_arr);
+    kprintf("execv: we made it! going to user mode!\n");
     /* Return to user mode */
     enter_new_process(argc, (userptr_t)stackptr, NULL, stackptr, entrypoint);
     /* enter process does not return. */
@@ -341,11 +348,15 @@ sys_execv(userptr_t program, char **args)
     return EINVAL; // should never get here
 
 fail:
+    for(int i=0; i<argc; i++) {
+        kfree(kargs[i]);
+    }
     kfree(kernel_progname);
     kfree(kargs);
     kfree(size_arr);
     return result;
 }
+
 
 int
 get_argc(char **args, int *argc)
@@ -374,13 +385,17 @@ copy_in_args(char **args, char **kargs, int argc, int *size_arr)
     size_t actual_size;
 
     for (int i=0; i<argc; i++) {
-
-        err = copyinstr((const_userptr_t) args[i], kargs[i], (size_t) (sizeof(char *)), &actual_size);
+        kargs[i] = kmalloc(__PATH_MAX*sizeof(char)); // TODO have the actual size
+        err = copyinstr((const_userptr_t) args[i], kargs[i], __PATH_MAX, &actual_size); // TODO: what should the size be here
         kprintf("the actual size after copy in is %d\n", (int)actual_size);
         kprintf("the argument is %s\n", kargs[i]);
         size_arr[i] = (int) actual_size;
 
         if(err) {
+            for (int j=0; j<i; j++) {
+                kprintf("failing when freeing kargs in copy_in_args for index %d",j);
+                kfree(kargs[i]);
+            }
             return err;
         }
     }

@@ -51,8 +51,10 @@
 
 
 int copy_in_args(char **args, char **kargs, int argc, int *size_arr);
-int copy_out_args(char **kargs, userptr_t argv, vaddr_t *stackptr, int argc, int *size_arr);
+int copy_out_args(char **kargs, userptr_t *argv, vaddr_t *stackptr, int argc, int *size_arr);
 int get_argc(char **args, int *argc);
+int pad_argument(char *arg, int size);
+int total_size_args(int *size_arr, int argc);
 
 int
 sys_fork(struct trapframe *tf, int *retval)
@@ -126,6 +128,7 @@ enter_new_forked_process(void *data1, unsigned long data2){
 
 pid_t
 sys_getpid(){
+    kprintf("pid is %d\n", (int) curproc->p_pid);
     return curproc->p_pid;
 }
 
@@ -267,7 +270,7 @@ sys_execv(userptr_t program, char **args)
     /* Copy in the arguments */
     char **kargs; 
     int *size_arr = kmalloc(argc*(sizeof(int))); // array to store size of all arguments
-    kargs = kmalloc(argc*(sizeof(char *))); // TODO: can optimize by kmallocing each pointer
+    kargs = kmalloc(argc*(sizeof(char *))); // TODO: can optimize by kmallocing each pointer, check if kargs is null
     result = copy_in_args(args, kargs, argc, size_arr);
     if (result) {
         kfree(kargs);
@@ -286,7 +289,6 @@ sys_execv(userptr_t program, char **args)
     /* Open the file */
     result = vfs_open(kernel_progname, O_RDONLY, 0, &v);
     if (result) {
-        vfs_close(v);
         goto fail;
     }
 
@@ -315,8 +317,7 @@ sys_execv(userptr_t program, char **args)
     }
 
     /* Copy arguments from kernel to user stack */
-    userptr_t argv_addr=(userptr_t) stackptr;
-    result = copy_out_args(kargs, argv_addr, &stackptr, argc, size_arr);
+    result = copy_out_args(kargs, &stackptr, argc, size_arr);
     if (result) {
         proc_setas(old_as);
         as_activate();
@@ -354,8 +355,13 @@ get_argc(char **args, int *argc)
 {
     char *copied_val;
     int i = 0;
+    char err = 0;
+
     do {
-        copyin((const_userptr_t) &args[i], (void *) &copied_val, (size_t) (sizeof(char *)));
+        err = copyin((const_userptr_t) &args[i], (void *) &copied_val, (size_t) (sizeof(char *)));
+        if (err) {
+            return err;
+        }
         i++;
     } 
     while(copied_val != NULL && i < ARG_MAX);
@@ -378,9 +384,6 @@ copy_in_args(char **args, char **kargs, int argc, int *size_arr)
     for (int i=0; i<argc; i++) {
         kargs[i] = kmalloc(__PATH_MAX*sizeof(char)); // TODO have the actual size
         err = copyinstr((const_userptr_t) args[i], kargs[i], __PATH_MAX, &actual_size); // TODO: what should the size be here
-        kprintf("the actual size after copy in is %d\n", (int)actual_size);
-        kprintf("the argument is %s\n", kargs[i]);
-        size_arr[i] = (int) actual_size;
 
         if(err) {
             for (int j=0; j<i; j++) {
@@ -389,30 +392,63 @@ copy_in_args(char **args, char **kargs, int argc, int *size_arr)
             }
             return err;
         }
+
+        int padded_size = pad_argument(kargs[i], (int) actual_size);
+        size_arr[i] = padded_size;
     }
 
     return 0;
 }
 
 int
-copy_out_args(char **kargs, userptr_t argv, vaddr_t *stackptr, int argc, int *size_arr)
+copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr)
 {
     int result =0;
     size_t actual_size = 0;
-    (void)stackptr;
-    (void) kargs;
-    (void)actual_size; 
-    (void)argv;
 
-    for (int i=0; i<argc; i++) {
+    userptr_t arg_addr = (userptr_t) (*stackptr);
+    userptr_t *arg_pointer = (userptr_t *) (arg_addr-total_size_args(size_arr,argc));
+    // should be null terminated
+    arg_pointer --;
+    *arg_pointer = NULL;
+
+    for (int i=argc-1; i>=0; i--) {
+        arg_pointer --;
         kprintf("size_arr %d is %d\n", i, size_arr[i]);
-        *stackptr = *stackptr-size_arr[i];
-        result = copyoutstr((char *) kargs[i], (userptr_t)*stackptr, (size_t) size_arr[i], &actual_size);
+        arg_addr -= size_arr[i];
+        *arg_pointer = arg_addr;
+        result = copyout((void *)kargs[i], arg_addr, size_arr[i]);
 
         if(result) {
             kprintf("copy out error with error %s\n", strerror(result));
             return result;
         }
     }
-    return 0;
+
+    *stackptr = (vaddr_t)arg_pointer;
+    
+    return result;
+}
+
+// pads each argument with null terminators, returns the new size
+int
+pad_argument(char *arg, int size)
+{
+    int pad_count = 4 - (size % 4);
+    for (int i=size; i<size+pad_count; i++) {
+        arg[i] = '\0';
+    }
+
+    return size+pad_count;
+}
+
+int
+total_size_args(int *size_arr, int argc)
+{
+    int total_size = 0;
+    for (int i=0; i<argc; i++) {
+        total_size+=size_arr[i];
+    }
+
+    return total_size;
 }

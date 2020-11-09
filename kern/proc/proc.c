@@ -191,6 +191,7 @@ proc_destroy(struct proc *proc)
 			proc->p_addrspace = NULL;
 		}
 		as_destroy(as);
+
 	}
 	filetable_destroy(proc->p_filetable);
 	threadarray_cleanup(&proc->p_threads);
@@ -199,6 +200,7 @@ proc_destroy(struct proc *proc)
 	array_destroy(proc->p_children);
 
 	kfree(proc->p_name);
+	kfree(proc->p_addrspace);
 	kfree(proc);
 }
 

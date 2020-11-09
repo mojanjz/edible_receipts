@@ -55,6 +55,7 @@ int copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr);
 int get_argc(char **args, int *argc);
 int pad_argument(char *arg, int size);
 int total_size_args(int *size_arr, int argc);
+int arg_length(const char *arg,size_t max_size, size_t *size);
 
 int
 sys_fork(struct trapframe *tf, int *retval)
@@ -382,14 +383,25 @@ copy_in_args(char **args, char **kargs, int argc, int *size_arr)
 {
     int err = 0;
     size_t actual_size;
+    size_t max_size = ARG_MAX;
 
     for (int i=0; i<argc; i++) {
-        kargs[i] = kmalloc(__PATH_MAX*sizeof(char)); // TODO have the actual size
-        err = copyinstr((const_userptr_t) args[i], kargs[i], __PATH_MAX, &actual_size); // TODO: what should the size be here
+        err = arg_length((const char *) args[i], max_size, &actual_size);
+        if (err) {
+            return err;
+        }
+
+        max_size-=actual_size;
+        size_t pad_room = 4 - (actual_size % 4);
+
+        kargs[i] = kmalloc((actual_size+pad_room)*sizeof(char)); // TODO have the actual size
+        // kargs[i] = kmalloc(__PATH_MAX*sizeof(char));
+        // err = copyin((const_userptr_t)&args[i], (void *)&kargs[i], actual_size);
+        err = copyinstr((const_userptr_t) args[i], kargs[i], actual_size, NULL); // TODO: what should the size be here
 
         if(err) {
             for (int j=0; j<i; j++) {
-                kprintf("failing when freeing kargs in copy_in_args for index %d",j);
+                kprintf("copy in failed:(\n");
                 kfree(kargs[i]);
             }
             return err;
@@ -415,7 +427,7 @@ copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr)
 
     for (int i=argc-1; i>=0; i--) {
         arg_pointer --;
-        kprintf("size_arr %d is %d\n", i, size_arr[i]);
+        // kprintf("size_arr %d is %d\n", i, size_arr[i]);
         arg_addr -= size_arr[i];
         *arg_pointer = arg_addr;
         result = copyout((void *)kargs[i], arg_addr, size_arr[i]);
@@ -452,4 +464,28 @@ total_size_args(int *size_arr, int argc)
     }
 
     return total_size;
+}
+
+int
+arg_length(const char *arg, size_t max_size, size_t *size)
+{
+    char next_char;
+    size_t i=0;
+    int err =0;
+
+    do {
+        err = copyin((const_userptr_t)&arg[i], (void *)&next_char, (size_t)sizeof(char));
+        if (err) {
+            return err;
+        }
+        i++;
+
+    }while(next_char != 0 && i < max_size);
+
+    if(next_char != 0) {
+        return E2BIG;
+    }
+
+    *size=i;
+    return 0;
 }

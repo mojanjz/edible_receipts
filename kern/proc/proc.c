@@ -422,7 +422,8 @@ issue_pid()
 	/* Check that PID was correctly assigned */
 	if(new_pid == 0){
 		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE! ENPROC
-		kprintf("There are no available PIDS!");
+		kprintf("There are no available PIDS");
+		panic("There are no available PIDs");
 	}
 	
 	

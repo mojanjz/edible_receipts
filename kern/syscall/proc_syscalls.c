@@ -126,10 +126,12 @@ enter_new_forked_process(void *data1, unsigned long data2){
     mips_usermode(tf);
 }
 
-pid_t
-sys_getpid(){
-    kprintf("pid is %d\n", (int) curproc->p_pid);
-    return curproc->p_pid;
+int
+sys_getpid(int *retval){
+    lock_acquire(pid_table->pid_table_lk);
+    *retval = (int) curproc->p_pid;
+    lock_release(pid_table->pid_table_lk);
+    return 0;
 }
 
 pid_t

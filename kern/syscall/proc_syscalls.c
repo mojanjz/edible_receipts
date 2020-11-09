@@ -51,7 +51,7 @@
 
 
 int copy_in_args(char **args, char **kargs, int argc, int *size_arr);
-int copy_out_args(char **kargs, userptr_t *argv, vaddr_t *stackptr, int argc, int *size_arr);
+int copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr);
 int get_argc(char **args, int *argc);
 int pad_argument(char *arg, int size);
 int total_size_args(int *size_arr, int argc);
@@ -406,7 +406,6 @@ int
 copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr)
 {
     int result =0;
-    size_t actual_size = 0;
 
     userptr_t arg_addr = (userptr_t) (*stackptr);
     userptr_t *arg_pointer = (userptr_t *) (arg_addr-total_size_args(size_arr,argc));

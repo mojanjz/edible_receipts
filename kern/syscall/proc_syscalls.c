@@ -145,7 +145,7 @@ sys_getpid(int *retval){
  * Returns: the process id whose exit status is reported in status (pid)
  */
 pid_t
-sys_waitpid(pid_t pid, int *status, int options)
+sys_waitpid(pid_t pid, int *status, int options, int *retval)
 {
     int exitcode;
 
@@ -175,7 +175,8 @@ sys_waitpid(pid_t pid, int *status, int options)
             return retval;
         }
     }
-    return pid;
+    *retval = pid;
+    return 0;
 }
 
 /* Checks if process with PID pid is a child of curent process.

@@ -115,6 +115,7 @@ common_prog(int nargs, char **args)
 {
 	struct proc *proc;
 	int result;
+	int ret_pid;
 
 #if OPT_SYNCHPROBS
 	kprintf("Warning: this probably won't work with a "
@@ -141,7 +142,8 @@ common_prog(int nargs, char **args)
 	 * The new process will be destroyed when the program exits...
 	 * once you write the code for handling that.
 	 */
-	sys_waitpid(proc->p_pid, NULL, 0);
+
+	sys_waitpid(proc->p_pid, NULL, 0, &ret_pid);
 	
 	return 0;
 }

@@ -287,6 +287,18 @@ proc_create_fork(const char *name){
 	child_proc->p_addrspace = child_as;
     // proc_setas(child_as);
 
+	/*
+	 * Lock the current process to copy its current directory.
+	 * (We don't need to lock the new process, though, as we have
+	 * the only reference to it.)
+	 */
+	spinlock_acquire(&curproc->p_lock);
+	if (curproc->p_cwd != NULL) {
+		VOP_INCREF(curproc->p_cwd);
+		child_proc->p_cwd = curproc->p_cwd;
+	}
+	spinlock_release(&curproc->p_lock);
+
 	/* PID Fields */
 	configure_pid_fields(child_proc);
 	// kfree(child_as);

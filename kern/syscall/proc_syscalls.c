@@ -135,6 +135,15 @@ sys_getpid(int *retval){
     return 0;
 }
 
+/* 
+ * Waits for a specific process to exit, and return an encoded exit status.  If that process does not 
+ * exist, waitpid fails. Note that status == NULL is expressly allowed and indicates that waitpid 
+ * operates as normal but doesn't produce a status value.
+ * 
+ * Parameters: pid (the pid of the process on which to wait), *status (the pointer to integer storing the processes
+ * exitcode), options (should always be zero, not implementing options)
+ * Returns: the process id whose exit status is reported in status (pid)
+ */
 pid_t
 sys_waitpid(pid_t pid, int *status, int options)
 {
@@ -155,7 +164,6 @@ sys_waitpid(pid_t pid, int *status, int options)
     lock_acquire(pid_table->pid_table_lk);
     while (pid_table->process_statuses[pid] != ZOMBIE){
         cv_wait(pid_table->pid_table_cv, pid_table->pid_table_lk);
-        /* TODO: do i need to update status manually */
     }
     exitcode = pid_table->process_exitcodes[pid];
 
@@ -167,7 +175,7 @@ sys_waitpid(pid_t pid, int *status, int options)
             return retval;
         }
     }
-    return 0; //TODO: fix
+    return pid;
 }
 
 /* Checks if process with PID pid is a child of curent process */

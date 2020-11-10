@@ -178,7 +178,11 @@ sys_waitpid(pid_t pid, int *status, int options)
     return pid;
 }
 
-/* Checks if process with PID pid is a child of curent process */
+/* Checks if process with PID pid is a child of curent process.
+ *
+ * Parameters: pid (the pid of the child process to verify)
+ * Returns: true if process is a child, false otherwise
+ */
 bool
 isChild(pid_t pid)
 {

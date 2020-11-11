@@ -50,6 +50,7 @@
 #include <vnode.h>
 #include <limits.h>
 #include <filetable.h>
+#include <kern/errno.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -263,29 +264,39 @@ proc_create_runprogram(const char *name)
 	return newproc;
 }
 
+/*
+ * Create a fresh proc for use by sys_fork. It will have duplicates of the address space and process field
+ * It will have a different PID value and inherits the current process p_cwd (current working directory)
+ *
+ * Parameters: name (name of the new process)
+ * 			   error (variable in which error code will be stored)
+ * Returns: child_process (the created process with proper address space and process fields set-up)
+ * 			NULL (If any error occurs), error is set
+ */
 struct proc * 
-proc_create_fork(const char *name){
+proc_create_fork(const char *name, int *error)
+{
 	struct proc *child_proc;
 	int err = 0;
 	
 	child_proc = proc_create(name);
 	if(child_proc == NULL){
-		return NULL;//TODO: improve error handling
+		*error = ENOMEM;
+		return NULL;
 	}
 	
 	/* Copy the address space of the parent */
     struct addrspace *child_as = (struct addrspace *)kmalloc(sizeof(struct addrspace));
     if (child_as == NULL) {
-		kprintf("Error in proc_create_fork");
-        return NULL;//TODO: improve error handling
+		*error = ENOMEM;
+        return NULL;
     }
     err = as_copy(curproc->p_addrspace, &child_as);
     if(err) {
-		kprintf("Error in proc_create_fork");
-        return NULL; //TODO: improve error handling
+		*error = err;
+        return NULL;
     }
 	child_proc->p_addrspace = child_as;
-    // proc_setas(child_as);
 
 	/*
 	 * Lock the current process to copy its current directory.
@@ -301,7 +312,6 @@ proc_create_fork(const char *name){
 
 	/* PID Fields */
 	configure_pid_fields(child_proc);
-	// kfree(child_as);
 
 	return child_proc;
 }

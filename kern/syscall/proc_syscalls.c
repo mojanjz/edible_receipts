@@ -57,35 +57,34 @@ int pad_argument(char *arg, int size);
 int total_size_args(int *size_arr, int argc);
 int arg_length(const char *arg,size_t max_size, size_t *size);
 
+/* 
+ * Duplicates the currently running process as the child of the current process
+ * 
+ * Paramters: trapframe (the trapframe of the process before entering the system call handler)
+ *            retval (the return value), for the parent process
+ * Returns: On success: 0, enters the child process, updated retval to child process's PID
+ *          On failure: error code
+ */
 int
 sys_fork(struct trapframe *tf, int *retval)
 {
     int err = 0;
-    // size_t child_name_size = 100;
-    (void) retval;
-    (void) tf;
     struct proc *child_proc;
     pid_t child_pid;
 
-    // /* Get the next available PID for the parent */
-    // child_pid = issue_pid(); // TODO change such that pid issued when proc created not here
-    // /* Create child process */
-    // char child_name[child_name_size];
-    // snprintf(child_name, child_name_size, "%s-pid:%d", curproc->p_name, (int)child_pid);
-    // child_proc = proc_create_fork(child_name);
-
-    child_proc = proc_create_fork("child-process"); //TODO: confirm process name doesnt have to be unique
-    if(child_proc == NULL){
-        return ENOMEM;
+    /* Create and setup the new process */
+    child_proc = proc_create_fork("child-process", &err);
+    if(err) {
+        return err;
     }
     child_pid = child_proc->p_pid;
 
-    /* Copy the parent filetable */
+    /* Copy the parent's filetable */
     filetable_copy(child_proc->p_filetable, curproc->p_filetable);
 
     /* Copy the parent's trapframe */
     struct trapframe *child_tf = (struct trapframe *)kmalloc(sizeof(struct trapframe));
-    if(child_tf == NULL){
+    if(child_tf == NULL) {
         return ENOMEM;
     }
     memcpy((void *)child_tf, (const void *)tf, sizeof(struct trapframe));
@@ -96,33 +95,35 @@ sys_fork(struct trapframe *tf, int *retval)
     child_tf->tf_epc = child_tf->tf_epc + 4;
 
     /* Make kernel thread for child */
-    // char child_thread_name[12];
-    // snprintf(child_thread_name, 12, "%d-thread", (int)child_pid);
-    
-    // err = thread_fork(child_thread_name, child_proc, enter_new_forked_process, child_tf, 0);
     err = thread_fork("child-thread", child_proc, enter_new_forked_process, child_tf, 0);
 
-    if(err){
+    if(err) {
         kfree(child_tf);
         proc_destroy(child_proc);
         return err;
     }
-    // V on the parent ready
-    // P child ready 
-    /* Update parent's retval */
-    // tf->tf_v0 = child_pid;
+    
+    /* Update the return value for the parent fork */
     *retval = (int) child_pid;
     return 0; 
 }
 
+/* 
+ * Used by sys_fork, copies the trapframe of the child to the stack, and enters usermode
+ * Parameters: data1: used to store the trapframe
+ *             data2: unused, for convention
+ * Returns: this function should not return
+ */
 void
 enter_new_forked_process(void *data1, unsigned long data2){
     (void)data2;
 
-    struct trapframe *tf = curthread->t_stack+16; //trapframe should be on the stack
+    /* Copy the trapframe onto the stack */
+    struct trapframe *tf = curthread->t_stack+16;
     memcpy(tf, (const void *)data1, sizeof(struct trapframe));
     kfree((struct trapframe *)data1);
 
+    /* Activate the address space and enter user mode */
     as_activate();
     mips_usermode(tf);
 }
@@ -158,7 +159,7 @@ sys_waitpid(pid_t pid, int *status, int options, int *retval)
         return ESRCH;
     }
     /* Make sure that pid argument names a process that is a child of curent process */
-    if (!isChild(pid)){
+    if (!is_child(pid)){
         return ECHILD;
     }
     lock_acquire(pid_table->pid_table_lk);
@@ -185,7 +186,7 @@ sys_waitpid(pid_t pid, int *status, int options, int *retval)
  * Returns: true if process is a child or curproc, false otherwise
  */
 bool
-isChild(pid_t pid)
+is_child(pid_t pid)
 {
     bool is_child = false;
     int num_children = array_num(curproc->p_children);
@@ -200,7 +201,8 @@ isChild(pid_t pid)
     return is_child;
 }
 
-/* Causes the current process to exit
+/* 
+ * Causes the current process to exit
  *
  * Parameters: exitcode (exitcode to report back to other processes via waitpid)
  * Returns: Exit does not return!
@@ -389,6 +391,8 @@ fail:
     return result;
 }
 
+/* execv helper functions */
+
 /* Returns the total number of arguments in the userspace args array by copying a few characters 
  * Parameters: args (array of arguments in the userspace)
  *             argc (the variable in which the number will be stored)
@@ -468,6 +472,7 @@ copy_in_args(char **args, char **kargs, int argc, int *size_arr)
 }
 
 /* Copies out the arguments from ukernel buffer to user stack.
+ *
  * Parameters: kargs (array in kernel space that has the arguments)
  *             stackptr (the current address of the stackpointer)
  *             argc (the number of arguments to be copied in)
@@ -504,7 +509,9 @@ copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr)
     return result;
 }
 
-/* Pads arguments for the size to be divisible by 4 to align before copying to user stack
+/* 
+ * Pads arguments for the size to be divisible by 4 to align before copying to user stack
+ *
  * Paramters: arg (the argument to be padded), size (size of the argument before padding)
  * Returns: padded_size (size of the array after padding), updates the actual argument
  */
@@ -519,7 +526,9 @@ pad_argument(char *arg, int size)
     return size+pad_count;
 }
 
-/* Returns the total size of the arguments
+/* 
+ * Returns the total size of the arguments
+ * 
  * Parameter: size_arr (the array the stores the size of all the arguments)
  *            argc (the number of arguments)
  * Returns: ttotal_size (the sum of the size of all arguments)
@@ -534,7 +543,9 @@ total_size_args(int *size_arr, int argc)
 
     return total_size;
 }
-/* Calculates the length of a given argument in userspace by copying in one character at a time until it hits NULL
+/* 
+ * Calculates the length of a given argument in userspace by copying in one character at a time until it hits NULL
+ * 
  * Parameter: arg (the argument)
  *            max_size (maximum allowed size to ensure the total length of all arguments does not exceed ARGMAX)
  *            size (the variable to store the actual size)

@@ -105,7 +105,7 @@ void proc_bootstrap(void);
 struct proc *proc_create_runprogram(const char *name);
 
 /* Create a new forked child process */
-struct proc *proc_create_fork(const char *name);
+struct proc *proc_create_fork(const char *name, int *err);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);

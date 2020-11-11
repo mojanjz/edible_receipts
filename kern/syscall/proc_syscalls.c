@@ -237,10 +237,17 @@ sys__exit(int exitcode)
     //TODO: add panic?
 }
 
+/* Runs the given program within the current process.
+ * Usually used after sys_fork, for running a new process
+ * Parameters: program (user pointer to the name of the program)
+ *             args (arguments of the given program, also in userspace)
+ * Returns: On success, it does not return and enters the new process.
+ *          On failure, returns the error code.
+ */
 int 
 sys_execv(userptr_t program, char **args)
 {
-    kprintf("in execv for process with pid %d\n", curproc->p_pid);
+
     struct addrspace *as;
     struct vnode *v;
     vaddr_t entrypoint, stackptr;
@@ -250,36 +257,53 @@ sys_execv(userptr_t program, char **args)
     /* Copy program name in*/
     char *kernel_progname;
 
-    kernel_progname = (char *)kmalloc(__PATH_MAX);
+    kernel_progname = (char *)kmalloc(PATH_MAX);
     if (kernel_progname == NULL) {
         return ENOMEM;
     }
 
-    result = copyinstr(program, kernel_progname, __PATH_MAX, NULL);
+    result = copyinstr(program, kernel_progname, PATH_MAX, NULL);
     if (result) {
         kfree(kernel_progname);
         return result;
     }
 
-    kprintf("got the program name %s\n", kernel_progname);
-
-    /* Get the size of arguments array */
+    /* Get the size of the arguments array */
     result = get_argc(args, &argc);
     if (result) {
         kfree(kernel_progname);
         return result;
     }
-    kprintf("got the size of the arguments %d\n", argc);
-    /* Copy in the arguments */
-    char **kargs; 
-    int *size_arr = kmalloc(argc*(sizeof(int))); // array to store size of all arguments
-    kargs = kmalloc(argc*(sizeof(char *))); // TODO: can optimize by kmallocing each pointer, check if kargs is null
+
+    /* Malloc the kernel argument array */ 
+    char **kargs;
+    kargs = kmalloc(argc*(sizeof(char *)));
+    if (kargs == NULL) {
+        kfree(kernel_progname);
+        return ENOMEM;
+    }
+
+    /* Malloc a size array to store the size of all arguments */
+    int *size_arr = kmalloc(argc*(sizeof(int)));
+    if (size_arr == NULL) {
+        kfree(kargs);
+        kfree(kernel_progname);
+        return ENOMEM;
+    }
+
+    /* Copy in arguments into the kernel buffer */
     result = copy_in_args(args, kargs, argc, size_arr);
     if (result) {
         kfree(kargs);
         kfree(size_arr);
         kfree(kernel_progname);
         return result;
+    }
+
+    /* Open the file */
+    result = vfs_open(kernel_progname, O_RDONLY, 0, &v);
+    if (result) {
+        goto fail;
     }
 
     /* Create a new address space */
@@ -289,19 +313,12 @@ sys_execv(userptr_t program, char **args)
         goto fail;
     }
     
-    /* Open the file */
-    result = vfs_open(kernel_progname, O_RDONLY, 0, &v);
-    if (result) {
-        goto fail;
-    }
-
     /* Switch to it and activate it. */
-    struct addrspace *old_as = proc_setas(as); //TODO: restore if failure happens
+    struct addrspace *old_as = proc_setas(as);
     as_activate();
 
     /* Load the executable and run it */
     result = load_elf(v, &entrypoint);
-    (void)entrypoint;
     if (result) {
         vfs_close(v);
         proc_setas(old_as);
@@ -319,7 +336,7 @@ sys_execv(userptr_t program, char **args)
         goto fail;
     }
 
-    /* Copy arguments from kernel to user stack */
+    /* Copy arguments from kernel buffer to user stack */
     result = copy_out_args(kargs, &stackptr, argc, size_arr);
     if (result) {
         proc_setas(old_as);
@@ -335,7 +352,7 @@ sys_execv(userptr_t program, char **args)
     kfree(kernel_progname);
     kfree(kargs);
     kfree(size_arr);
-    kprintf("execv: we made it! going to user mode!\n");
+
     /* Return to user mode */
     enter_new_process(argc, (userptr_t)stackptr, NULL, stackptr, entrypoint);
     /* enter process does not return. */
@@ -352,7 +369,12 @@ fail:
     return result;
 }
 
-
+/* Returns the total number of arguments in the userspace args array by copying a few characters 
+ * Parameters: args (array of arguments in the userspace)
+ *             argc (the variable in which the number will be stored)
+ * Returns: On success: 0, and argc is updated
+ *          On failure: error code
+ */
 int
 get_argc(char **args, int *argc)
 {
@@ -374,10 +396,18 @@ get_argc(char **args, int *argc)
     }
 
     *argc = i-1; // null is not included
-    return 0; // size of the args array
+    return 0;
 
 }
 
+/* Copies in the arguments from userspace to the kernel buffer
+ * Parameters: args (array of arguments in the userspace)
+ *             kargs (array in kernel space to store the arguments)
+ *             argc (the number of arguments to be copied in)
+ *             size_arr (the array that stores the size of all arguments)
+ * Returns: On success: 0, and kargs, size_arr are updated
+ *          On failure: error code
+ */
 int
 copy_in_args(char **args, char **kargs, int argc, int *size_arr)
 {
@@ -386,27 +416,30 @@ copy_in_args(char **args, char **kargs, int argc, int *size_arr)
     size_t max_size = ARG_MAX;
 
     for (int i=0; i<argc; i++) {
+        /* get the actual size of the argument while making sure we don't exceed ARG_MAX */
         err = arg_length((const char *) args[i], max_size, &actual_size);
         if (err) {
             return err;
         }
 
         max_size-=actual_size;
-        size_t pad_room = 4 - (actual_size % 4);
+        size_t pad_room = 4 - (actual_size % 4); // each argument is padded so the length is divisble by 4
 
-        kargs[i] = kmalloc((actual_size+pad_room)*sizeof(char)); // TODO have the actual size
-        // kargs[i] = kmalloc(__PATH_MAX*sizeof(char));
-        // err = copyin((const_userptr_t)&args[i], (void *)&kargs[i], actual_size);
-        err = copyinstr((const_userptr_t) args[i], kargs[i], actual_size, NULL); // TODO: what should the size be here
+        kargs[i] = kmalloc((actual_size+pad_room)*sizeof(char));
+        if (kargs[i] == NULL) {
+            return ENOMEM;
+        }
+
+        err = copyinstr((const_userptr_t) args[i], kargs[i], actual_size, NULL);
 
         if(err) {
             for (int j=0; j<i; j++) {
-                kprintf("copy in failed:(\n");
                 kfree(kargs[i]);
             }
             return err;
         }
 
+        /* Pad the arguments after copy in and store the padded_size in size_arr */
         int padded_size = pad_argument(kargs[i], (int) actual_size);
         size_arr[i] = padded_size;
     }
@@ -414,36 +447,47 @@ copy_in_args(char **args, char **kargs, int argc, int *size_arr)
     return 0;
 }
 
+/* Copies out the arguments from ukernel buffer to user stack.
+ * Parameters: kargs (array in kernel space that has the arguments)
+ *             stackptr (the current address of the stackpointer)
+ *             argc (the number of arguments to be copied in)
+ *             size_arr (the array that has the size of all arguments)
+ * Returns: On success: 0, and stackptr is updated
+ *          On failure: error code
+ */
 int
 copy_out_args(char **kargs, vaddr_t *stackptr, int argc, int *size_arr)
 {
     int result =0;
 
+    /* Setup pointers to the address of arguments (arg_pointer) and the pointer (arg_addr) that points to the start of the argument */
     userptr_t arg_addr = (userptr_t) (*stackptr);
     userptr_t *arg_pointer = (userptr_t *) (arg_addr-total_size_args(size_arr,argc));
-    // should be null terminated
+
+    /* Manually set the last pointer to NULL */
     arg_pointer --;
     *arg_pointer = NULL;
 
-    for (int i=argc-1; i>=0; i--) {
-        arg_pointer --;
-        // kprintf("size_arr %d is %d\n", i, size_arr[i]);
+    /* Decrement arg_addr by the size of the argument, copyout the argument, and store the address in arg_pointer */
+    for (int i=argc-1; i>=0; i--) { // store from last to first to keep consistency between arg_pointer and the arguments
+        arg_pointer --; // decrement since we are going down the stack
         arg_addr -= size_arr[i];
         *arg_pointer = arg_addr;
         result = copyout((void *)kargs[i], arg_addr, size_arr[i]);
-
         if(result) {
-            kprintf("copy out error with error %s\n", strerror(result));
             return result;
         }
     }
-
+    /* Update stack pointer */
     *stackptr = (vaddr_t)arg_pointer;
     
     return result;
 }
 
-// pads each argument with null terminators, returns the new size
+/* Pads arguments for the size to be divisible by 4 to align before copying to user stack
+ * Paramters: arg (the argument to be padded), size (size of the argument before padding)
+ * Returns: padded_size (size of the array after padding), updates the actual argument
+ */
 int
 pad_argument(char *arg, int size)
 {
@@ -455,6 +499,11 @@ pad_argument(char *arg, int size)
     return size+pad_count;
 }
 
+/* Returns the total size of the arguments
+ * Parameter: size_arr (the array the stores the size of all the arguments)
+ *            argc (the number of arguments)
+ * Returns: ttotal_size (the sum of the size of all arguments)
+ */
 int
 total_size_args(int *size_arr, int argc)
 {
@@ -465,7 +514,13 @@ total_size_args(int *size_arr, int argc)
 
     return total_size;
 }
-
+/* Calculates the length of a given argument in userspace by copying in one character at a time until it hits NULL
+ * Parameter: arg (the argument)
+ *            max_size (maximum allowed size to ensure the total length of all arguments does not exceed ARGMAX)
+ *            size (the variable to store the actual size)
+ * Returns: On success: 0, updated the size variable
+ *          On failure: error code
+ */
 int
 arg_length(const char *arg, size_t max_size, size_t *size)
 {

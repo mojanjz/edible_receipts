@@ -171,7 +171,7 @@ sys_waitpid(pid_t pid, int *status, int options, int *retval)
     lock_release(pid_table->pid_table_lk);
 
     if (status != NULL){
-        int retval = copyout(&exitcode, (userptr_t)status, sizeof(int32_t)); //TODO: is int32 the right thing to take the size of? should be size of exitcode
+        int retval = copyout(&exitcode, (userptr_t)status, sizeof(exitcode));
         if (retval){
             return retval;
         }
@@ -192,7 +192,7 @@ is_child(pid_t pid)
     int num_children = array_num(curproc->p_children);
     
     for (int i = 0; i < num_children; i++){
-        if ((pid_t)array_get(curproc->p_children,i) == pid){ /* TODO: Check that this cast does what is expected */
+        if ((pid_t)array_get(curproc->p_children,i) == pid){
             is_child = true;
             break;
         }

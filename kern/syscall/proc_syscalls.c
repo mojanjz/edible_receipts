@@ -135,8 +135,17 @@ sys_getpid(int *retval){
     return 0;
 }
 
+/* 
+ * Waits for a specific process to exit, and return an encoded exit status.  If that process does not 
+ * exist, waitpid fails. Note that status == NULL is expressly allowed and indicates that waitpid 
+ * operates as normal but doesn't produce a status value.
+ * 
+ * Parameters: pid (the pid of the process on which to wait), *status (the pointer to integer storing the processes
+ * exitcode), options (should always be zero, not implementing options)
+ * Returns: the process id whose exit status is reported in status (pid)
+ */
 pid_t
-sys_waitpid(pid_t pid, int *status, int options)
+sys_waitpid(pid_t pid, int *status, int options, int *retval)
 {
     int exitcode;
 
@@ -155,7 +164,6 @@ sys_waitpid(pid_t pid, int *status, int options)
     lock_acquire(pid_table->pid_table_lk);
     while (pid_table->process_statuses[pid] != ZOMBIE){
         cv_wait(pid_table->pid_table_cv, pid_table->pid_table_lk);
-        /* TODO: do i need to update status manually */
     }
     exitcode = pid_table->process_exitcodes[pid];
 
@@ -167,10 +175,15 @@ sys_waitpid(pid_t pid, int *status, int options)
             return retval;
         }
     }
-    return 0; //TODO: fix
+    *retval = pid;
+    return 0;
 }
 
-/* Checks if process with PID pid is a child of curent process */
+/* Checks if process with PID pid is a child of curent process.
+ *
+ * Parameters: pid (the pid of the child process to verify)
+ * Returns: true if process is a child or curproc, false otherwise
+ */
 bool
 isChild(pid_t pid)
 {
@@ -187,54 +200,61 @@ isChild(pid_t pid)
     return is_child;
 }
 
+/* Causes the current process to exit
+ *
+ * Parameters: exitcode (exitcode to report back to other processes via waitpid)
+ * Returns: Exit does not return!
+ */
 void
 sys__exit(int exitcode)
 {
     lock_acquire(pid_table->pid_table_lk);
 
-    /* Update children */
+    /* Update statuses of exiting process' children */
     for (unsigned i = 0; i < array_num(curproc->p_children); i++){
-        /* If child is an running, make an orphan */
+        /* If child is still running, make an orphan */
         pid_t child_pid = (int)array_get(curproc->p_children,i);
         if (pid_table->process_statuses[child_pid] == OCCUPIED){
             pid_table->process_statuses[child_pid] = ORPHAN;
         } 
-        /* If child is a zombie, destroy it */
+        /* If child is already a zombie, destroy it */
         else if (pid_table->process_statuses[child_pid] == ZOMBIE){ 
             proc_destroy(pid_table->processes[child_pid]);
             delete_pid_entry(child_pid);
         } else {
-            //TODO: fix error handling
-            kprintf("CHILD STATUS IS INVALID IN SYS__EXIT");
+            /* Child process has an invalid status */
+            lock_release(pid_table->pid_table_lk);
+            panic("Exiting process' child has invalid status"); /* Can't return an error code here since exit should not return */
         }  
     }
 
-    /* Update process */
-    /* Process is orphan: no parent waiting on it, proceed by destroying */
+    /* Update process: */
+    /* Process is orphan - no parent waiting on it, proceed by destroying */
     if (pid_table->process_statuses[curproc->p_pid] == ORPHAN){
         delete_pid_entry(curproc->p_pid);
-        proc_destroy(curproc); //TODO: check order of these two operations
+        proc_destroy(curproc);
     }
-    /* Process has a parent: signal to parent that the process has finished & don't destroy yet*/
+    /* Process has a parent - signal to parent that the process has finished & don't destroy yet*/
     else if (pid_table->process_statuses[curproc->p_pid] == OCCUPIED){
         pid_table->process_exitcodes[curproc->p_pid] = exitcode;
         pid_table->process_statuses[curproc->p_pid] = ZOMBIE;
     } else {
-        //TODO: fix error handling
-        kprintf("PROCESS STATUS IS INVALID IN SYS__EXIT");
+        /* Parent process has invalid status */
+        lock_release(pid_table->pid_table_lk);
+        panic("Exiting process status is invalid"); /* Can't return an error code here since exit should not return */
     }
 
-    //TODO: implement condition variable and broadcast here
     cv_broadcast(pid_table->pid_table_cv, pid_table->pid_table_lk);
 
     lock_release(pid_table->pid_table_lk);
+
     /* Last command that should run, shouldn't return */
     thread_exit();
     /*  
      * ------------------------------
      *process should never get this far
      */
-    //TODO: add panic?
+    panic("Process did not exit correctly");
 }
 
 /* Runs the given program within the current process.

@@ -200,7 +200,7 @@ proc_destroy(struct proc *proc)
 	array_destroy(proc->p_children);
 
 	kfree(proc->p_name);
-	kfree(proc->p_addrspace);
+	// kfree(proc->p_addrspace);
 	kfree(proc);
 }
 
@@ -276,10 +276,12 @@ proc_create_fork(const char *name){
 	/* Copy the address space of the parent */
     struct addrspace *child_as = (struct addrspace *)kmalloc(sizeof(struct addrspace));
     if (child_as == NULL) {
+		kprintf("Error in proc_create_fork");
         return NULL;//TODO: improve error handling
     }
     err = as_copy(curproc->p_addrspace, &child_as);
     if(err) {
+		kprintf("Error in proc_create_fork");
         return NULL; //TODO: improve error handling
     }
 	child_proc->p_addrspace = child_as;
@@ -299,6 +301,7 @@ proc_create_fork(const char *name){
 
 	/* PID Fields */
 	configure_pid_fields(child_proc);
+	// kfree(child_as);
 
 	return child_proc;
 }

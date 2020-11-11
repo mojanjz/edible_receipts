@@ -58,7 +58,6 @@ struct proc {
 	struct threadarray p_threads;	/* Threads in this process */
 	pid_t p_pid;	/* The process' PID */
 
-	pid_t p_ppid;	/* The process' parent's PID TODO: Check if we still need this*/
 	struct array *p_children;	/* An array of the process' children's PIDs */
 
 	/* VM */
@@ -67,7 +66,6 @@ struct proc {
 	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
 
-	/* add more material here as needed */
 	/* Filetable */
 	struct filetable *p_filetable;
 };
@@ -77,12 +75,9 @@ struct proc {
  */
 struct pid_table{
 	struct lock *pid_table_lk; /* lock to synchronize children table */
-	/* Data structure for storing information of children PIDs, statuses, and processes? */
-	/* TODO: decide whether to represent this as two arrays, or a 2D array, for now just store statuses for each pid */
-	
 	/* Note: Index number in the arrays represents the corresponding PID of entry*/
 	/* Array of process statuses, as defined above */
-	int process_statuses[__PID_MAX]; //TODO: should this be __PID_MAX +1 ?
+	int process_statuses[__PID_MAX];
 	/* Array of processes */
 	struct proc *processes[__PID_MAX];
 	/* Array of process exit codes */

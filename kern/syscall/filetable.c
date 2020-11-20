@@ -140,7 +140,6 @@ file_open(char *filename, int flags, mode_t mode, int *retfd) {
     }
     /* File table is full */
     if(fd == __OPEN_MAX) {
-        kprintf("file table is full for file %s\n", filename);
         lock_release(filetable->ft_lock);
         return EMFILE; 
     }

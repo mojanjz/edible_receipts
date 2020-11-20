@@ -176,10 +176,9 @@ syscall(struct trapframe *tf)
 		break;
 
 		case SYS__exit: ;
-		//https://stackoverflow.com/questions/18496282/why-do-i-get-a-label-can-only-be-part-of-a-statement-and-a-declaration-is-not-a
-		int exitcode = (int)_MKWAIT_EXIT(tf->tf_a0); //TODO: confirm this is right approach - bruh
-		sys__exit(exitcode); //TODO: confirm no err result
-		//TODO: exit should never return
+		int exitcode = (int)_MKWAIT_EXIT(tf->tf_a0);
+		sys__exit(exitcode); 
+		/* Exit should never return */
 		break;
 
 		case SYS_execv:
@@ -188,7 +187,6 @@ syscall(struct trapframe *tf)
 		break;
 
 	    default:
-		kprintf("Unknown syscall %d\n", callno);
 		err = ENOSYS;
 		break;
 	}

@@ -104,7 +104,10 @@ proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 	/* PID Initialization */
-	proc->p_pid = 1; /* Kernel thread has special pid value 1, set this as default pid value */
+	/* Note: Kernel thread has special pid value 1, set this as default pid value.  
+	Will be changed in proc_create_runprogram or proc_create_fork if created 
+	process is not the kernel process. */
+	proc->p_pid = 1; 
 
 	return proc;
 }
@@ -201,7 +204,6 @@ proc_destroy(struct proc *proc)
 	array_destroy(proc->p_children);
 
 	kfree(proc->p_name);
-	// kfree(proc->p_addrspace);
 	kfree(proc);
 }
 
@@ -428,15 +430,22 @@ proc_setas(struct addrspace *newas)
 
 /* Functions related to PID management */
 
+/* 
+ * Returns a pid that is available to be used by a process by referencing the global pid table
+ * 
+ * Parameters: void
+ * Returns: the newly assigned pid
+ */
 pid_t
 issue_pid()
 {
 	pid_t new_pid = 0; /* If new_pid isn't assigned, return zero to signify error */
 	
-	//TODO: Test synchronization of this method!
-	lock_acquire(pid_table->pid_table_lk); /* Lock whole PID table so that statuses dont change during check */
+	/* Lock whole PID table so that statuses dont change during check */
+	lock_acquire(pid_table->pid_table_lk); 
 	
-	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
+	for (int i = __PID_MIN; i < __PID_MAX; i++){ 
+		/* Make sure not to assign special PIDs by searching from __PID_MIN onwards*/
 		if (pid_table->process_statuses[i] == AVAILABLE){
 			new_pid = i;
 			pid_table->process_statuses[i] = OCCUPIED;
@@ -446,30 +455,40 @@ issue_pid()
 
 	lock_release(pid_table->pid_table_lk);
 	
-	/* Check that PID was correctly assigned */
+	/* Check that PID was correctly assigned, if not return error */
 	if(new_pid == 0){
-		//THERE ARE NO AVAILABLE PIDs, HANDLE ERROR HERE! ENPROC
-		kprintf("There are no available PIDS");
-		panic("There are no available PIDs");
+		return ENPROC;
 	}
-	
-	
+
 	return new_pid;
 }
 
+/* 
+ * Configure the PID-related fields of a new process.
+ * 
+ * Parameters: the child process to initialize
+ * Returns: void
+ */
 void
 configure_pid_fields(struct proc *child_proc)
 {
-	//TODO: test synchronization, change name to add pid entry
-	child_proc->p_pid = issue_pid(); //Already locked
-	child_proc->p_ppid = curproc->p_pid;
+	/* Issue the child process a PID */
+	child_proc->p_pid = issue_pid();
+	
 	spinlock_acquire(&curproc->p_lock);
+	/* Add the child process to the parent's array of children */
 	array_add(curproc->p_children, (void *)child_proc->p_pid, NULL);
+	/* Add child process to pid table */
 	pid_table->processes[child_proc->p_pid] = child_proc;
 	spinlock_release(&curproc->p_lock);
 }
 
-/* Deletes an entry in the PID table */
+/* 
+ * Removes a process specified by pid from the PID table.
+ * 
+ * Parameters: pid (the pid of the process to remove from the PID table)
+ * Returns: void
+ */
 void
 delete_pid_entry(pid_t pid)
 {
@@ -478,12 +497,17 @@ delete_pid_entry(pid_t pid)
 	pid_table->process_exitcodes[pid] = (int) NULL;
 }
 
+/* 
+ * Initializes the global PID table
+ * 
+ * Parameters: void
+ * Returns: void
+ */
 void 
 init_pid_table()
 {
 	pid_table = kmalloc(sizeof(struct pid_table));
 	if (pid_table == NULL){
-		//TODO: check that panic is the right way to handle 
 		panic("Error trying to initialize pid table.\n");
 	}
 
@@ -501,7 +525,7 @@ init_pid_table()
 	pid_table->process_statuses[0] = OCCUPIED;
 	pid_table->process_statuses[1] = OCCUPIED;
 	
-	/* Loop over PIDs and make them available */
+	/* Loop over remaining PIDs and make them available */
 	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
 		pid_table->process_statuses[i] = AVAILABLE;
 	}

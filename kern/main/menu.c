@@ -143,6 +143,8 @@ common_prog(int nargs, char **args)
 	 * once you write the code for handling that.
 	 */
 
+	/* Make the menu thread wait on the forked process to fix 
+	reading/writing to the terminal */
 	sys_waitpid(proc->p_pid, NULL, 0, &ret_pid);
 	
 	return 0;

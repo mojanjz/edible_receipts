@@ -37,6 +37,7 @@
 #include <proc.h>
 #include <current.h>
 #include <mips/tlb.h>
+#include <vm.h>
 
 // /*
 //  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -278,40 +279,40 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 }
 
 // static
-// void
-// as_zero_region(paddr_t paddr, unsigned npages)
-// {
-// 	bzero((void *)PADDR_TO_KVADDR(paddr), npages * PAGE_SIZE);
-// }
+void
+as_zero_region(paddr_t paddr, unsigned npages)
+{
+	bzero((void *)PADDR_TO_KVADDR(paddr), npages * PAGE_SIZE);
+}
 
-// int
-// as_prepare_load(struct addrspace *as)
-// {
-// 	KASSERT(as->as_pbase1 == 0);
-// 	KASSERT(as->as_pbase2 == 0);
-// 	KASSERT(as->as_stackpbase == 0);
+int
+as_prepare_load(struct addrspace *as)
+{
+	KASSERT(as->as_pbase1 == 0);
+	KASSERT(as->as_pbase2 == 0);
+	KASSERT(as->as_stackpbase == 0);
 
-// 	as->as_pbase1 = getppages(as->as_npages1);
-// 	if (as->as_pbase1 == 0) {
-// 		return ENOMEM;
-// 	}
+	as->as_pbase1 = getppages(as->as_npages1);
+	if (as->as_pbase1 == 0) {
+		return ENOMEM;
+	}
 
-// 	as->as_pbase2 = getppages(as->as_npages2);
-// 	if (as->as_pbase2 == 0) {
-// 		return ENOMEM;
-// 	}
+	as->as_pbase2 = getppages(as->as_npages2);
+	if (as->as_pbase2 == 0) {
+		return ENOMEM;
+	}
 
-// 	as->as_stackpbase = getppages(DUMBVM_STACKPAGES);
-// 	if (as->as_stackpbase == 0) {
-// 		return ENOMEM;
-// 	}
+	as->as_stackpbase = getppages(DUMBVM_STACKPAGES);
+	if (as->as_stackpbase == 0) {
+		return ENOMEM;
+	}
 
-// 	as_zero_region(as->as_pbase1, as->as_npages1);
-// 	as_zero_region(as->as_pbase2, as->as_npages2);
-// 	as_zero_region(as->as_stackpbase, DUMBVM_STACKPAGES);
+	as_zero_region(as->as_pbase1, as->as_npages1);
+	as_zero_region(as->as_pbase2, as->as_npages2);
+	as_zero_region(as->as_stackpbase, DUMBVM_STACKPAGES);
 
-// 	return 0;
-// }
+	return 0;
+}
 
 int
 as_complete_load(struct addrspace *as)

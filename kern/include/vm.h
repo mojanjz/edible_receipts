@@ -32,9 +32,23 @@
 
 /*
  * VM system-related definitions.
- *
- * You'll probably want to add stuff here.
  */
+#define CM_FREE 0
+#define CM_DIRTY 1
+#define CM_CLEAN 2
+#define CM_FIXED 3
+
+struct coremap_entry {
+	int status; // free, clean, dirty, fixed
+	paddr_t start_addr;
+};
+
+struct coremap {
+    struct coremap_entry *cm_entries;
+    struct lock *cm_lock;
+};
+
+void coremap_bootstrap(void);
 
 
 #include <machine/vm.h>

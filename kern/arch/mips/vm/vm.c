@@ -28,21 +28,32 @@
 /* under dumbvm, always have 72k of user stack */
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
 #define DUMBVM_STACKPAGES    18
+#define COREMAP_PAGES 2 // TODO: pick the right number
+
+/* Function prototypes */
+bool page_free(int cm_index);
+paddr_t get_page_address(int cm_index);
+paddr_t page_alloc(void); 
+paddr_t page_nalloc(unsigned long npages);
 
 /*
  * Wrap ram_stealmem in a spinlock.
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
+struct coremap *cm;
+unsigned long max_page; // available physical pages
+bool cm_bootstrapped = false;
 
 void
 vm_bootstrap(void)
 {
-	/* Do nothing. */
+	coremap_bootstrap();
 }
 
 paddr_t
 getppages(unsigned long npages) 
 {
+	KASSERT(!cm_bootstrapped); //Shouldn't be able to steal memory after cm in place
 	paddr_t addr;
 
 	spinlock_acquire(&stealmem_lock);
@@ -58,7 +69,12 @@ vaddr_t
 alloc_kpages(unsigned npages)
 {
 	paddr_t pa;
-	pa = getppages(npages);
+	if (cm_bootstrapped) {
+		// page_nalloc
+	}
+	else {
+		pa = getppages(npages);
+	}
 	if (pa==0) {
 		return 0;
 	}
@@ -185,4 +201,89 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
 	splx(spl);
 	return EFAULT;
+}
+
+/* COREMAP */
+void coremap_bootstrap(void)
+{   
+    /* Initialize data structures before calling ram functions */
+    cm->cm_lock = lock_create("cm_lock");
+	if(cm->cm_lock == NULL){
+		panic("Couldn't make coremap lock");
+	}
+	// Stealing memory needed to represent our coremap
+	paddr_t coremap_addr = getppages(COREMAP_PAGES); //TODO: find real size of coremap
+	KASSERT(coremap_addr != 0); //Confirm first address is not zero based on requirements for using PADDR_TO_KVADDR
+
+	// Get "base and bounds" of our remaining memory
+    paddr_t first_addr = ram_getfirstfree();
+    paddr_t last_addr = ram_getsize();
+
+	KASSERT(last_addr > first_addr);
+
+    max_page = (last_addr - first_addr) / PAGE_SIZE; //Should yeild truncated value to never overestimate the number of pages we have the memory for 
+	
+	/* Initialize coremap */
+	cm->cm_entries = (struct coremap_entry *) PADDR_TO_KVADDR(coremap_addr);
+
+	for (unsigned long i=0; i < max_page; i++) {
+		cm->cm_entries[i].status = CM_FREE;
+		cm->cm_entries[i].start_addr = first_addr + i*PAGE_SIZE;
+	}
+
+	cm_bootstrapped = true;
+}
+
+paddr_t page_alloc() {
+	paddr_t pa;
+	for (unsigned long i=0; i < max_page; i++) {
+		if (page_free(i)) {
+			cm->cm_entries[i].status = CM_DIRTY;
+			pa = cm->cm_entries[i].start_addr;
+			break;
+		}
+	}
+
+	// TODO ADD FREEING PAGES IF NO PAGE IS AVAILABLE
+	bzero((void *)PADDR_TO_KVADDR(pa), PAGE_SIZE);
+	return pa;
+}
+
+paddr_t page_nalloc(unsigned long npages) {
+	unsigned long i=0;
+	bool enough_space = true;
+	paddr_t pa = 0;
+
+	while (i + npages <= max_page) {
+		if (page_free(i)) {
+			for (unsigned long j = i + 1; j < i + npages; j++) {
+				if (!page_free(j)) {
+					enough_space = false;
+					break;
+				}
+			}
+			if (enough_space) {
+				pa = get_page_address(i);
+				break;
+			}
+		}
+		i++;
+	}
+	if (enough_space) {
+		//Now update the status of the appropriate coremap entries
+		for (unsigned long k = i; k < i + npages; k++) {
+			cm->cm_entries[k].status = CM_DIRTY;
+		}
+		bzero((void *)PADDR_TO_KVADDR(pa), npages * PAGE_SIZE);
+	}	
+	KASSERT(pa != 0); //TODO: deal with running out of memory in table (probs swapping w disk or moving things around)
+	return pa;
+}
+
+bool page_free(int cm_index) {
+	return cm->cm_entries[cm_index].status == CM_FREE;
+}
+
+paddr_t get_page_address(int cm_index){
+	return cm->cm_entries[cm_index].start_addr;
 }

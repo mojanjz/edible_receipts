@@ -70,7 +70,7 @@ alloc_kpages(unsigned npages)
 {
 	paddr_t pa;
 	if (cm_bootstrapped) {
-		// page_nalloc
+		pa =page_nalloc(npages);
 	}
 	else {
 		pa = getppages(npages);
@@ -203,32 +203,47 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	return EFAULT;
 }
 
-/* COREMAP */
+/* Coremap Functions */
 void coremap_bootstrap(void)
 {   
     /* Initialize data structures before calling ram functions */
+	cm = kmalloc(sizeof(struct coremap));
     cm->cm_lock = lock_create("cm_lock");
+	// struct lock *cm_lock = lock_create("cm_lock");
 	if(cm->cm_lock == NULL){
+		kprintf("couldnt make the lock");
 		panic("Couldn't make coremap lock");
 	}
 	// Stealing memory needed to represent our coremap
-	paddr_t coremap_addr = getppages(COREMAP_PAGES); //TODO: find real size of coremap
-	KASSERT(coremap_addr != 0); //Confirm first address is not zero based on requirements for using PADDR_TO_KVADDR
-
+	// paddr_t coremap_addr = getppages(COREMAP_PAGES); //TODO: find real size of coremap
+	// KASSERT(coremap_addr != 0); //Confirm first address is not zero based on requirements for using PADDR_TO_KVADDR
+	// kprintf("The address of the coremap: %d\n", coremap_addr);
 	// Get "base and bounds" of our remaining memory
-    paddr_t first_addr = ram_getfirstfree();
-    paddr_t last_addr = ram_getsize();
+	    
+	paddr_t last_addr = ram_getsize(); // Must be called before ram_getfirstfree
+	unsigned long total_num_pages = last_addr / PAGE_SIZE; // Number of pages needed to represent all memory.
+	/* Initialize coremap */
+	cm->cm_entries = kmalloc(sizeof(struct coremap_entry)*total_num_pages);
+	
+    paddr_t first_addr = ram_getfirstfree(); //Note that calling this function means we can no longer use any functions in ram.c - can only be called once, ram_stealmem will no longer work.
+
+	kprintf("first address %d\n",first_addr);
+	kprintf(" and second address %d\n", last_addr);
 
 	KASSERT(last_addr > first_addr);
 
     max_page = (last_addr - first_addr) / PAGE_SIZE; //Should yeild truncated value to never overestimate the number of pages we have the memory for 
-	
-	/* Initialize coremap */
-	cm->cm_entries = (struct coremap_entry *) PADDR_TO_KVADDR(coremap_addr);
+	kprintf("max page is %ld", max_page);
 
-	for (unsigned long i=0; i < max_page; i++) {
-		cm->cm_entries[i].status = CM_FREE;
-		cm->cm_entries[i].start_addr = first_addr + i*PAGE_SIZE;
+	
+	for (unsigned long i=0; i < total_num_pages; i++) {
+		if (i < total_num_pages-max_page) {
+			//Make sure that memory used to represent coremap is marked fixed (should never be swapped to disk) 
+			cm->cm_entries[i].status = CM_FIXED;	
+		} else {
+			cm->cm_entries[i].status = CM_FREE;
+		}
+		cm->cm_entries[i].start_addr = i*PAGE_SIZE;
 	}
 
 	cm_bootstrapped = true;
@@ -253,6 +268,10 @@ paddr_t page_nalloc(unsigned long npages) {
 	unsigned long i=0;
 	bool enough_space = true;
 	paddr_t pa = 0;
+
+	if (npages == 1) {
+		return page_alloc();
+	}
 
 	while (i + npages <= max_page) {
 		if (page_free(i)) {

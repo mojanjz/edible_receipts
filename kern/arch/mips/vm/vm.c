@@ -88,10 +88,6 @@ alloc_kpages(unsigned npages)
 void
 free_kpages(vaddr_t addr)
 {	
-	/* 
-	 * Freeing pages:
-	 * 
-	 */
 	paddr_t pa = KVADDR_TO_PADDR(addr);
 	// Translate physical address to a page index
 	unsigned long index = get_cm_index(pa);
@@ -300,7 +296,7 @@ paddr_t page_nalloc(unsigned long npages) {
 		return page_alloc();
 	}
 
-	kprintf("number of page is %ld\n", npages);
+	kprintf("number of requested pages are %ld\n", npages);
 
 	KASSERT(i+npages <= total_num_pages);
 

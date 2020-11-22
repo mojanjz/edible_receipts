@@ -84,7 +84,6 @@ struct pid_table{
 	int process_exitcodes[__PID_MAX];
 	/* CV used to implement wait cv */
 	struct cv *pid_table_cv;
-
 };
 
 /* This is the globally accessible pid_table */

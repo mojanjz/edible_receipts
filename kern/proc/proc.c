@@ -506,6 +506,7 @@ delete_pid_entry(pid_t pid)
 void 
 init_pid_table()
 {
+	kprintf("Size of pidtable %d", sizeof(struct pid_table));
 	pid_table = kmalloc(sizeof(struct pid_table));
 	if (pid_table == NULL){
 		panic("Error trying to initialize pid table.\n");

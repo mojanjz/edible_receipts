@@ -40,7 +40,6 @@
 
 struct coremap_entry {
 	int status; // free, clean, dirty, fixed
-	paddr_t start_addr;
 };
 
 struct coremap {

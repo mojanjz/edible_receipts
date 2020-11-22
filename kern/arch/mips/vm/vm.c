@@ -31,17 +31,20 @@
 #define COREMAP_PAGES 2 // TODO: pick the right number
 
 /* Function prototypes */
-bool page_free(int cm_index);
-paddr_t get_page_address(int cm_index);
+bool page_free(unsigned long cm_index);
+paddr_t get_page_address(unsigned long cm_index);
 paddr_t page_alloc(void); 
 paddr_t page_nalloc(unsigned long npages);
+unsigned long get_cm_index(paddr_t pa);
+void coremap_bootstrap_test(void);
 
 /*
  * Wrap ram_stealmem in a spinlock.
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 struct coremap *cm;
-unsigned long max_page; // available physical pages
+unsigned long first_page_index;
+unsigned long total_num_pages;
 bool cm_bootstrapped = false;
 
 void
@@ -53,6 +56,7 @@ vm_bootstrap(void)
 paddr_t
 getppages(unsigned long npages) 
 {
+	kprintf("stealing %ld pages\n", npages);
 	KASSERT(!cm_bootstrapped); //Shouldn't be able to steal memory after cm in place
 	paddr_t addr;
 
@@ -83,10 +87,17 @@ alloc_kpages(unsigned npages)
 
 void
 free_kpages(vaddr_t addr)
-{
-	/* nothing - leak the memory. */
+{	
+	/* 
+	 * Freeing pages:
+	 * 
+	 */
+	paddr_t pa = KVADDR_TO_PADDR(addr);
+	// Translate physical address to a page index
+	unsigned long index = get_cm_index(pa);
 
-	(void)addr;
+	KASSERT(cm->cm_entries[index].status !=CM_FREE);
+	cm->cm_entries[index].status = CM_FREE;
 }
 
 void
@@ -203,11 +214,22 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	return EFAULT;
 }
 
+void coremap_bootstrap_test(void)
+{	
+	paddr_t pa = ram_getsize();
+	paddr_t fa = ram_getfirstfree();
+	int max_page = (pa - fa) / PAGE_SIZE;
+	kprintf("ram_getsize %d\n", pa);
+	kprintf("ram_first_addr %d\n", fa);
+	kprintf("# of available pages %d\n", max_page);
+}
+
 /* Coremap Functions */
 void coremap_bootstrap(void)
 {   
     /* Initialize data structures before calling ram functions */
 	cm = kmalloc(sizeof(struct coremap));
+	kprintf("the size of cm is %d", sizeof(struct coremap));
     cm->cm_lock = lock_create("cm_lock");
 	// struct lock *cm_lock = lock_create("cm_lock");
 	if(cm->cm_lock == NULL){
@@ -221,9 +243,10 @@ void coremap_bootstrap(void)
 	// Get "base and bounds" of our remaining memory
 	    
 	paddr_t last_addr = ram_getsize(); // Must be called before ram_getfirstfree
-	unsigned long total_num_pages = last_addr / PAGE_SIZE; // Number of pages needed to represent all memory.
+	total_num_pages = last_addr / PAGE_SIZE; // Number of pages needed to represent all memory.
 	/* Initialize coremap */
 	cm->cm_entries = kmalloc(sizeof(struct coremap_entry)*total_num_pages);
+	kprintf("the size of the cm_entry array is %ld", sizeof(struct coremap_entry)*total_num_pages);
 	
     paddr_t first_addr = ram_getfirstfree(); //Note that calling this function means we can no longer use any functions in ram.c - can only be called once, ram_stealmem will no longer work.
 
@@ -232,7 +255,9 @@ void coremap_bootstrap(void)
 
 	KASSERT(last_addr > first_addr);
 
-    max_page = (last_addr - first_addr) / PAGE_SIZE; //Should yeild truncated value to never overestimate the number of pages we have the memory for 
+    unsigned long max_page = (last_addr - first_addr) / PAGE_SIZE; //Should yeild truncated value to never overestimate the number of pages we have the memory for 
+	first_page_index = total_num_pages - max_page; 
+	kprintf("first page index is %ld", first_page_index);
 	kprintf("max page is %ld", max_page);
 
 	
@@ -243,18 +268,20 @@ void coremap_bootstrap(void)
 		} else {
 			cm->cm_entries[i].status = CM_FREE;
 		}
-		cm->cm_entries[i].start_addr = i*PAGE_SIZE;
 	}
 
 	cm_bootstrapped = true;
 }
 
 paddr_t page_alloc() {
+	kprintf("in page_alloc\n");
 	paddr_t pa;
-	for (unsigned long i=0; i < max_page; i++) {
+	for (unsigned long i = first_page_index; i < total_num_pages; i++) {
 		if (page_free(i)) {
+			kprintf("got a free page at index %ld\n", i);
 			cm->cm_entries[i].status = CM_DIRTY;
-			pa = cm->cm_entries[i].start_addr;
+			pa = get_page_address(i);
+			kprintf("the physcal page is %d\n", pa);
 			break;
 		}
 	}
@@ -265,7 +292,7 @@ paddr_t page_alloc() {
 }
 
 paddr_t page_nalloc(unsigned long npages) {
-	unsigned long i=0;
+	unsigned long i = first_page_index;
 	bool enough_space = true;
 	paddr_t pa = 0;
 
@@ -273,7 +300,13 @@ paddr_t page_nalloc(unsigned long npages) {
 		return page_alloc();
 	}
 
-	while (i + npages <= max_page) {
+	kprintf("number of page is %ld\n", npages);
+
+	KASSERT(i+npages <= total_num_pages);
+
+	while (i + npages <= total_num_pages) {
+		kprintf("index is %ld", i);
+		kprintf("total num pages is %ld", total_num_pages);
 		if (page_free(i)) {
 			for (unsigned long j = i + 1; j < i + npages; j++) {
 				if (!page_free(j)) {
@@ -288,6 +321,7 @@ paddr_t page_nalloc(unsigned long npages) {
 		}
 		i++;
 	}
+
 	if (enough_space) {
 		//Now update the status of the appropriate coremap entries
 		for (unsigned long k = i; k < i + npages; k++) {
@@ -299,10 +333,18 @@ paddr_t page_nalloc(unsigned long npages) {
 	return pa;
 }
 
-bool page_free(int cm_index) {
+bool page_free(unsigned long cm_index) {
 	return cm->cm_entries[cm_index].status == CM_FREE;
 }
 
-paddr_t get_page_address(int cm_index){
-	return cm->cm_entries[cm_index].start_addr;
+paddr_t get_page_address(unsigned long cm_index){
+	paddr_t pa;
+	pa = (paddr_t) cm_index*PAGE_SIZE;
+	return pa;
+}
+
+unsigned long get_cm_index(paddr_t pa){
+	unsigned long index;
+	index =  pa / PAGE_SIZE;
+	return index;
 }

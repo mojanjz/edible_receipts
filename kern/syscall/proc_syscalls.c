@@ -155,7 +155,7 @@ sys_waitpid(pid_t pid, int *status, int options, int *retval)
         return EINVAL;
     }
     /* Make sure waitpid being called on an existant process */
-    if (pid > __PID_MAX || pid < __PID_MIN || pid_table->process_statuses[pid] == AVAILABLE){
+    if (pid > __PID_MAX || pid < __PID_MIN || array_get(pid_table->process_statuses, pid) == AVAILABLE || array_get(pid_table->process_statuses, pid) == NULL) {
         return ESRCH;
     }
     /* Make sure that pid argument names a process that is a child of curent process */
@@ -163,10 +163,10 @@ sys_waitpid(pid_t pid, int *status, int options, int *retval)
         return ECHILD;
     }
     lock_acquire(pid_table->pid_table_lk);
-    while (pid_table->process_statuses[pid] != ZOMBIE){
+    while ((int)array_get(pid_table->process_statuses, pid) != ZOMBIE){
         cv_wait(pid_table->pid_table_cv, pid_table->pid_table_lk);
     }
-    exitcode = pid_table->process_exitcodes[pid];
+    exitcode = (int)array_get(pid_table->process_exitcodes, pid);
 
     lock_release(pid_table->pid_table_lk);
 
@@ -216,12 +216,12 @@ sys__exit(int exitcode)
     for (unsigned i = 0; i < array_num(curproc->p_children); i++){
         /* If child is still running, make an orphan */
         pid_t child_pid = (int)array_get(curproc->p_children,i);
-        if (pid_table->process_statuses[child_pid] == OCCUPIED){
-            pid_table->process_statuses[child_pid] = ORPHAN;
+        if ((int)array_get(pid_table->process_statuses, child_pid) == OCCUPIED) {
+            array_set(pid_table->process_statuses, child_pid, (void *)ORPHAN);
         } 
         /* If child is already a zombie, destroy it */
-        else if (pid_table->process_statuses[child_pid] == ZOMBIE){ 
-            proc_destroy(pid_table->processes[child_pid]);
+        else if ((int)array_get(pid_table->process_statuses, child_pid) == ZOMBIE) { 
+            proc_destroy(array_get(pid_table->processes, child_pid));
             delete_pid_entry(child_pid);
         } else {
             /* Child process has an invalid status */
@@ -232,14 +232,14 @@ sys__exit(int exitcode)
 
     /* Update process: */
     /* Process is orphan - no parent waiting on it, proceed by destroying */
-    if (pid_table->process_statuses[curproc->p_pid] == ORPHAN){
+    if ((int)array_get(pid_table->process_statuses, curproc->p_pid) == ORPHAN) {
         delete_pid_entry(curproc->p_pid);
         proc_destroy(curproc);
     }
     /* Process has a parent - signal to parent that the process has finished & don't destroy yet*/
-    else if (pid_table->process_statuses[curproc->p_pid] == OCCUPIED){
-        pid_table->process_exitcodes[curproc->p_pid] = exitcode;
-        pid_table->process_statuses[curproc->p_pid] = ZOMBIE;
+    else if ((int)array_get(pid_table->process_statuses, curproc->p_pid) == OCCUPIED){
+        array_set(pid_table->process_exitcodes, curproc->p_pid, (void *)exitcode);
+        array_set(pid_table->process_statuses, curproc->p_pid, (void *)ZOMBIE);
     } else {
         /* Parent process has invalid status */
         lock_release(pid_table->pid_table_lk);

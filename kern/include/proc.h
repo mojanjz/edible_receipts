@@ -77,11 +77,14 @@ struct pid_table{
 	struct lock *pid_table_lk; /* lock to synchronize children table */
 	/* Note: Index number in the arrays represents the corresponding PID of entry*/
 	/* Array of process statuses, as defined above */
-	int process_statuses[__PID_MAX];
-	/* Array of processes */
-	struct proc *processes[__PID_MAX];
-	/* Array of process exit codes */
-	int process_exitcodes[__PID_MAX];
+	struct array *process_statuses;
+	struct array *processes;
+	struct array *process_exitcodes;
+	// int process_statuses[__PID_MAX];
+	// /* Array of processes */
+	// struct proc *processes[__PID_MAX];
+	// /* Array of process exit codes */
+	// int process_exitcodes[__PID_MAX];
 	/* CV used to implement wait cv */
 	struct cv *pid_table_cv;
 };

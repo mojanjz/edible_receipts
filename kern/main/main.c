@@ -136,6 +136,7 @@ boot(void)
 	/* Initialize the global PID table */
 	init_pid_table();
 
+
 	/*
 	 * Make sure various things aren't screwed up.
 	 */

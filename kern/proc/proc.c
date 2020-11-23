@@ -440,26 +440,44 @@ pid_t
 issue_pid()
 {
 	pid_t new_pid = 0; /* If new_pid isn't assigned, return zero to signify error */
+	pid_t *pid_pointer = &new_pid;
 	
 	/* Lock whole PID table so that statuses dont change during check */
 	lock_acquire(pid_table->pid_table_lk); 
 	
-	for (int i = __PID_MIN; i < __PID_MAX; i++){ 
-		/* Make sure not to assign special PIDs by searching from __PID_MIN onwards*/
-		if (pid_table->process_statuses[i] == AVAILABLE){
+	// for (int i = __PID_MIN; i < __PID_MAX; i++){ 
+	// 	/* Make sure not to assign special PIDs by searching from __PID_MIN onwards*/
+	// 	if (pid_table->process_statuses[i] == AVAILABLE){
+	// 		new_pid = i;
+	// 		pid_table->process_statuses[i] = OCCUPIED;
+	// 		break;
+	// 	}
+	// }
+	
+	// First check if there are any available PIDs in the existing PID table
+	for (unsigned int i = __PID_MIN; i < array_num(pid_table->process_statuses); i++) {
+		if (array_get(pid_table->process_statuses, i) == AVAILABLE) {
 			new_pid = i;
-			pid_table->process_statuses[i] = OCCUPIED;
+			array_set(pid_table->process_statuses, i, (void *)OCCUPIED);
 			break;
 		}
 	}
 
 	lock_release(pid_table->pid_table_lk);
 	
-	/* Check that PID was correctly assigned, if not return error */
-	if(new_pid == 0){
-		return ENPROC;
+	// There were no available PIDs in the table, add an entry to the table if not at max process capacity
+	if (new_pid == 0) {
+		// The PID table can be expanded
+		if (array_num(pid_table->process_statuses) < __PID_MAX) {
+			array_add(pid_table->process_statuses, (void *)OCCUPIED, (unsigned int *)pid_pointer);
+			array_add(pid_table->process_exitcodes, (void *)NULL, NULL); // The values for exitcode and processes will be filled out in configure_pid_fields
+			array_add(pid_table->processes, (void *)NULL, NULL);
+		}
+		/* Check that PID was correctly assigned, if not return error */
+		if (new_pid == 0) {
+			panic("No available PIDs to assign.");
+		}
 	}
-
 	return new_pid;
 }
 
@@ -479,7 +497,7 @@ configure_pid_fields(struct proc *child_proc)
 	/* Add the child process to the parent's array of children */
 	array_add(curproc->p_children, (void *)child_proc->p_pid, NULL);
 	/* Add child process to pid table */
-	pid_table->processes[child_proc->p_pid] = child_proc;
+	array_set(pid_table->processes, (unsigned int) child_proc->p_pid, (void *)child_proc);
 	spinlock_release(&curproc->p_lock);
 }
 
@@ -492,9 +510,9 @@ configure_pid_fields(struct proc *child_proc)
 void
 delete_pid_entry(pid_t pid)
 {
-	pid_table->process_statuses[pid] = AVAILABLE;
-	pid_table->processes[pid] = NULL;
-	pid_table->process_exitcodes[pid] = (int) NULL;
+	array_set(pid_table->process_statuses, (unsigned int)pid, (void *)AVAILABLE);
+	array_set(pid_table->processes, (unsigned int)pid, (void *)NULL);
+	array_set(pid_table->process_exitcodes, (unsigned int)pid, (void *)NULL);
 }
 
 /* 
@@ -522,12 +540,31 @@ init_pid_table()
 		panic("Error trying to make pid table condition variable.\n");
 	}
 
-	/* Assign special PID values to be occupied */
-	pid_table->process_statuses[0] = OCCUPIED;
-	pid_table->process_statuses[1] = OCCUPIED;
-	
-	/* Loop over remaining PIDs and make them available */
-	for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
-		pid_table->process_statuses[i] = AVAILABLE;
+	pid_table->process_statuses = array_create();
+	if (pid_table->process_statuses == NULL) {
+		panic("Error trying to initialize the process statuses array.\n");
 	}
+
+	pid_table->processes = array_create();
+	if (pid_table->processes == NULL) {
+		panic("Error trying to initialize the process array.\n");
+	}
+
+	pid_table->process_exitcodes = array_create();
+	if (pid_table->process_exitcodes == NULL) {
+		panic("Error trying to initialize the process exit codes.\n");
+	}
+
+	/* Assign special PID values to be occupied */
+	array_add(pid_table->process_statuses, (void *)OCCUPIED, NULL);
+	array_add(pid_table->process_exitcodes, NULL, NULL);
+	array_add(pid_table->processes, NULL, NULL);
+	array_add(pid_table->process_statuses, (void *)OCCUPIED, NULL);
+	array_add(pid_table->process_exitcodes, NULL, NULL);
+	array_add(pid_table->processes, NULL, NULL);
+	
+	// /* Loop over remaining PIDs and make them available */
+	// for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
+	// 	pid_table->process_statuses[i] = AVAILABLE;
+	// }
 }

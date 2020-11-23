@@ -56,8 +56,8 @@ vm_bootstrap(void)
 paddr_t
 getppages(unsigned long npages) 
 {
-	kprintf("stealing %ld pages\n", npages);
-	KASSERT(!cm_bootstrapped); //Shouldn't be able to steal memory after cm in place
+	// kprintf("stealing %ld pages\n", npages);
+	// KASSERT(!cm_bootstrapped); //Shouldn't be able to steal memory after cm in place
 	paddr_t addr;
 
 	spinlock_acquire(&stealmem_lock);
@@ -88,6 +88,7 @@ alloc_kpages(unsigned npages)
 void
 free_kpages(vaddr_t addr)
 {	
+	(void) addr;
 	paddr_t pa = KVADDR_TO_PADDR(addr);
 	// Translate physical address to a page index
 	unsigned long index = get_cm_index(pa);
@@ -344,3 +345,4 @@ unsigned long get_cm_index(paddr_t pa){
 	index =  pa / PAGE_SIZE;
 	return index;
 }
+

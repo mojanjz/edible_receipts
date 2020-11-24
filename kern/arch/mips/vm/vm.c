@@ -37,6 +37,7 @@ paddr_t page_alloc(void);
 paddr_t page_nalloc(unsigned long npages);
 unsigned long get_cm_index(paddr_t pa);
 void coremap_bootstrap_test(void);
+void free_cm_entries(unsigned long start_index, unsigned npages);
 
 /*
  * Wrap ram_stealmem in a spinlock.
@@ -273,15 +274,17 @@ void coremap_bootstrap(void)
 paddr_t page_alloc() {
 	kprintf("in page_alloc\n");
 	paddr_t pa;
+	lock_acquire(cm->cm_lock);
 	for (unsigned long i = first_page_index; i < total_num_pages; i++) {
 		if (page_free(i)) {
 			kprintf("got a free page at index %ld\n", i);
 			cm->cm_entries[i].status = CM_DIRTY;
 			pa = get_page_address(i);
-			kprintf("the physcal page is %d\n", pa);
+			kprintf("the physical page is %d\n", pa);
 			break;
 		}
 	}
+	lock_release(cm->cm_lock);
 
 	// TODO ADD FREEING PAGES IF NO PAGE IS AVAILABLE
 	bzero((void *)PADDR_TO_KVADDR(pa), PAGE_SIZE);
@@ -301,9 +304,10 @@ paddr_t page_nalloc(unsigned long npages) {
 
 	KASSERT(i+npages <= total_num_pages);
 
+	lock_acquire(cm->cm_lock);
 	while (i + npages <= total_num_pages) {
-		kprintf("index is %ld", i);
-		kprintf("total num pages is %ld", total_num_pages);
+		kprintf("index is %ld\n", i);
+		kprintf("total num pages is %ld\n", total_num_pages);
 		if (page_free(i)) {
 			for (unsigned long j = i + 1; j < i + npages; j++) {
 				if (!page_free(j)) {
@@ -325,9 +329,36 @@ paddr_t page_nalloc(unsigned long npages) {
 			cm->cm_entries[k].status = CM_DIRTY;
 		}
 		bzero((void *)PADDR_TO_KVADDR(pa), npages * PAGE_SIZE);
-	}	
+	}
+	else {
+		// TODO: CHANGE
+		// for now let's pick a random index and free contiguous blocks
+		unsigned long index = random() % total_num_pages; 
+		while (index < first_page_index || index+npages > total_num_pages) {
+			index = random() % total_num_pages;
+		}
+
+		kprintf("index to be freed for nalloc %ld", index);
+
+		free_cm_entries(index, npages);
+		pa = get_page_address(index);
+
+		for (unsigned long k = index; k < index + npages; k++) {
+			cm->cm_entries[k].status = CM_DIRTY;
+		}
+		bzero((void *)PADDR_TO_KVADDR(pa), npages * PAGE_SIZE);
+	}
+
+	kprintf("the physical address for nalloc is %d", pa);
+	lock_release(cm->cm_lock);
 	KASSERT(pa != 0); //TODO: deal with running out of memory in table (probs swapping w disk or moving things around)
 	return pa;
+}
+
+void free_cm_entries(unsigned long start_index, unsigned npages) {
+	for (unsigned long i=start_index; i<start_index+npages; i++) {
+		cm->cm_entries[i].status = CM_FREE;
+	}
 }
 
 bool page_free(unsigned long cm_index) {

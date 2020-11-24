@@ -38,8 +38,12 @@
 #define CM_CLEAN 2
 #define CM_FIXED 3
 
+#define PG_TABLE_SIZE PAGE_SIZE/4
+
+
 struct coremap_entry {
 	int status; // free, clean, dirty, fixed
+    int cm_ref;
 };
 
 struct coremap {
@@ -47,8 +51,17 @@ struct coremap {
     struct lock *cm_lock;
 };
 
-void coremap_bootstrap(void);
+struct outer_pgtable{
+    struct inner_pgtable *inner_mapping[PAGE_SIZE/4];
+};
 
+struct inner_pgtable{
+    struct paddr_t p_addrs[PAGE_SIZE/4];
+};
+
+void coremap_bootstrap(void);
+void cm_incref(unsigned long cm_index);
+bool cm_decref(unsigned long cm_index);
 
 #include <machine/vm.h>
 
@@ -73,5 +86,6 @@ paddr_t getppages(unsigned long npages);
 void vm_tlbshootdown_all(void);
 void vm_tlbshootdown(const struct tlbshootdown *);
 
+unsigned long get_cm_index(paddr_t pa);
 
 #endif /* _VM_H_ */

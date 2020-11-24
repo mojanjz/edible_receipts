@@ -34,10 +34,13 @@
 #include <vm.h>
 #include <spl.h>
 #include <spinlock.h>
+#include <thread.h>
 #include <proc.h>
 #include <current.h>
 #include <mips/tlb.h>
 #include <vm.h>
+
+void as_destroy_pgtable(struct addrspace *as);
 
 // /*
 //  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -195,13 +198,19 @@ as_create(void)
 		return NULL;
 	}
 
-	as->as_vbase1 = 0;
-	as->as_pbase1 = 0;
-	as->as_npages1 = 0;
-	as->as_vbase2 = 0;
-	as->as_pbase2 = 0;
-	as->as_npages2 = 0;
-	as->as_stackpbase = 0;
+	as->as_stackbase = USERSTACK - STACK_SIZE;
+	as->as_heapbase = 0;
+	as->as_heapsz = 0;
+
+	as->as_pgtable = kmalloc(sizeof(struct outer_pgtable));
+	if (as->as_pgtable == NULL){
+		kfree(as);
+		return NULL;
+	}
+
+	for (int i = 0; i < PG_TABLE_SIZE; i++) {
+		as->as_pgtable[i] = NULL; 
+	}
 
 	return as;
 }
@@ -209,7 +218,18 @@ as_create(void)
 void
 as_destroy(struct addrspace *as)
 {
+	as_destroy_pgtable(as);
 	kfree(as);
+}
+
+void
+as_destroy_pgtable(struct addrspace *as) {
+	for (int i = 0; i < PG_TABLE_SIZE; i++) {
+		if (as->as_pgtable[i] != NULL) {
+			kfree(*as_pgtable[i]); //TODO: confirm this pointer logic
+		}
+	}
+	
 }
 
 void
@@ -245,37 +265,34 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 {
 	size_t npages;
 
-	/* Align the region. First, the base... */
-	sz += vaddr & ~(vaddr_t)PAGE_FRAME;
-	vaddr &= PAGE_FRAME;
+	// /* Align the region. First, the base... */
+	// sz += vaddr & ~(vaddr_t)PAGE_FRAME;
+	// vaddr &= PAGE_FRAME;
 
-	/* ...and now the length. */
-	sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
+	// /* ...and now the length. */
+	// sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
 
-	npages = sz / PAGE_SIZE;
+	// npages = sz / PAGE_SIZE;
 
 	/* We don't use these - all pages are read-write */
 	(void)readable;
 	(void)writeable;
 	(void)executable;
 
-	if (as->as_vbase1 == 0) {
-		as->as_vbase1 = vaddr;
-		as->as_npages1 = npages;
-		return 0;
-	}
+	// Check that stack and heap have not collided 
+	vaddr_t end_of_region = vaddr + sz;
+	if (end_of_region > as->as_heapbase) {
+		//Get the base of the end of region page
+		vaddr_t page_aligned_eor = 0xfffff000 & end_of_region;
+		page_aligned_eor += PAGE_SIZE;
 
-	if (as->as_vbase2 == 0) {
-		as->as_vbase2 = vaddr;
-		as->as_npages2 = npages;
-		return 0;
+		// Actually move the heap base
+		as->as_heapbase = page_aligned_eor;
 	}
+	// Make sure that heap has not collided into stack
+	KASSERT(as->as_heapbase + as->as_heapsz < as->as_stackbase);
 
-	/*
-	 * Support for more than two regions is not available.
-	 */
-	kprintf("dumbvm: Warning: too many regions\n");
-	return ENOSYS;
+	return 0;
 }
 
 // static
@@ -288,29 +305,8 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
-	KASSERT(as->as_pbase1 == 0);
-	KASSERT(as->as_pbase2 == 0);
-	KASSERT(as->as_stackpbase == 0);
-
-	as->as_pbase1 = getppages(as->as_npages1);
-	if (as->as_pbase1 == 0) {
-		return ENOMEM;
-	}
-
-	as->as_pbase2 = getppages(as->as_npages2);
-	if (as->as_pbase2 == 0) {
-		return ENOMEM;
-	}
-
-	as->as_stackpbase = getppages(DUMBVM_STACKPAGES);
-	if (as->as_stackpbase == 0) {
-		return ENOMEM;
-	}
-
-	as_zero_region(as->as_pbase1, as->as_npages1);
-	as_zero_region(as->as_pbase2, as->as_npages2);
-	as_zero_region(as->as_stackpbase, DUMBVM_STACKPAGES);
-
+	/* Do Nothing */
+	(void) as;
 	return 0;
 }
 
@@ -324,9 +320,8 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	KASSERT(as->as_stackpbase != 0);
 
-	*stackptr = USERSTACK;
+	*stackptr = USERSTACK - STACK_SIZE;
 	return 0;
 }
 
@@ -340,33 +335,31 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		return ENOMEM;
 	}
 
-	new->as_vbase1 = old->as_vbase1;
-	new->as_npages1 = old->as_npages1;
-	new->as_vbase2 = old->as_vbase2;
-	new->as_npages2 = old->as_npages2;
+	//Copy over values from existing address space
+	new->as_heapbase = old->as_heapbase;
+	new->as_heapsz = old->as_heapsz;
+	new->as_stackbase = old->as_stackbase;
+	new->as_pgtable = old->as_pgtable;
 
-	/* (Mis)use as_prepare_load to allocate some physical memory. */
-	if (as_prepare_load(new)) {
-		as_destroy(new);
-		return ENOMEM;
+	for (int i=0; i< PG_TABLE_SIZE; i++) {
+		if (old->as_pgtable[i] != NULL) {
+			new->as_pgtable[i] = kmalloc(sizeof(struct inner_pgtable));
+			as_copy_inner_pgtable(old->as_pgtable[i], new->as_pgtable[i]);
+		}
 	}
-
-	KASSERT(new->as_pbase1 != 0);
-	KASSERT(new->as_pbase2 != 0);
-	KASSERT(new->as_stackpbase != 0);
-
-	memmove((void *)PADDR_TO_KVADDR(new->as_pbase1),
-		(const void *)PADDR_TO_KVADDR(old->as_pbase1),
-		old->as_npages1*PAGE_SIZE);
-
-	memmove((void *)PADDR_TO_KVADDR(new->as_pbase2),
-		(const void *)PADDR_TO_KVADDR(old->as_pbase2),
-		old->as_npages2*PAGE_SIZE);
-
-	memmove((void *)PADDR_TO_KVADDR(new->as_stackpbase),
-		(const void *)PADDR_TO_KVADDR(old->as_stackpbase),
-		DUMBVM_STACKPAGES*PAGE_SIZE);
 
 	*ret = new;
 	return 0;
+}
+
+//Iterate over old inner pg table and copy over entries to new one, incrememting ref count
+void
+as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new)
+{
+	
+	for(int i = 0; i < PG_TABLE_SIZE; i++){
+		new->p_addrs[i] = old->p_addrs[i];
+		unsigned long index = get_cm_index(new->p_addrs[i]);
+		cm_incref(index);
+	}
 }

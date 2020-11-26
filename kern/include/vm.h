@@ -42,6 +42,13 @@
 
 #define PG_TABLE_SIZE PAGE_SIZE/4
 
+#define OUTER_TABLE_INDEX 0xffc00000 /* mask for getting the outer page index from addr */
+#define INNER_TABLE_INDEX 0x3ff000 /* mask for getting the inner page index from addr */
+
+// Macros to get outer and inner page index from addr
+#define GET_OUTER_TABLE_INDEX(vaddr) (((vaddr) & OUTER_TABLE_INDEX) >> 22)
+#define GET_INNER_TABLE_INDEX(vaddr) (((vaddr) & INNER_TABLE_INDEX) >> 12)
+
 
 struct coremap_entry {
 	int status; // free, clean, dirty, fixed

@@ -264,7 +264,6 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		 int readable, int writeable, int executable)
 {
-
 	// /* Align the region. First, the base... */
 	// sz += vaddr & ~(vaddr_t)PAGE_FRAME;
 	// vaddr &= PAGE_FRAME;

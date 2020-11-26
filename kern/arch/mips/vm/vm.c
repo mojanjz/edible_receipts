@@ -35,8 +35,8 @@ bool page_free(unsigned long cm_index);
 paddr_t get_page_address(unsigned long cm_index);
 paddr_t page_alloc(void); 
 paddr_t page_nalloc(unsigned long npages);
-void coremap_bootstrap_test(void);
 void free_cm_entries(unsigned long start_index, unsigned npages);
+struct inner_pgtable * create_inner_pgtable(void);
 
 /*
  * Wrap ram_stealmem in a spinlock.
@@ -119,115 +119,126 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
-{
+{	
+	// kprintf("in vm fault :D with address: 0x%x\n", faultaddress);
 	(void) faulttype;
 	(void) faultaddress;
 	// vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
-	// paddr_t paddr;
-	// int i;
-	// uint32_t ehi, elo;
-	// struct addrspace *as;
-	// int spl;
+	paddr_t paddr=0;
+	int i;
+	uint32_t ehi, elo;
+	struct addrspace *as;
+	int spl;
 
-	// faultaddress &= PAGE_FRAME;
+	faultaddress &= PAGE_FRAME;
 
-	// DEBUG(DB_VM, "dumbvm: fault: 0x%x\n", faultaddress);
+	DEBUG(DB_VM, "vm: fault: 0x%x\n", faultaddress);
 
-	// switch (faulttype) {
-	//     case VM_FAULT_READONLY:
-	// 	/* We always create pages read-write, so we can't get this */
-	// 	panic("dumbvm: got VM_FAULT_READONLY\n");
-	//     case VM_FAULT_READ:
-	//     case VM_FAULT_WRITE:
-	// 	break;
-	//     default:
-	// 	return EINVAL;
-	// }
+	switch (faulttype) {
+	    case VM_FAULT_READONLY:
+		/* We always create pages read-write, so we can't get this */
+		panic("vm: got VM_FAULT_READONLY\n");
+	    case VM_FAULT_READ:
+	    case VM_FAULT_WRITE:
+		break;
+	    default:
+		return EINVAL;
+	}
 
-	// if (curproc == NULL) {
-	// 	/*
-	// 	 * No process. This is probably a kernel fault early
-	// 	 * in boot. Return EFAULT so as to panic instead of
-	// 	 * getting into an infinite faulting loop.
-	// 	 */
-	// 	return EFAULT;
-	// }
+	if (curproc == NULL) {
+		/*
+		 * No process. This is probably a kernel fault early
+		 * in boot. Return EFAULT so as to panic instead of
+		 * getting into an infinite faulting loop.
+		 */
+		return EFAULT;
+	}
 
-	// as = proc_getas();
-	// if (as == NULL) {
-	// 	/*
-	// 	 * No address space set up. This is probably also a
-	// 	 * kernel fault early in boot.
-	// 	 */
-	// 	return EFAULT;
-	// }
+	as = proc_getas();
+	if (as == NULL) {
+		/*
+		 * No address space set up. This is probably also a
+		 * kernel fault early in boot.
+		 */
+		return EFAULT;
+	}
 
 	// /* Assert that the address space has been set up properly. */
-	// KASSERT(as->as_vbase1 != 0);
-	// KASSERT(as->as_pbase1 != 0);
-	// KASSERT(as->as_npages1 != 0);
-	// KASSERT(as->as_vbase2 != 0);
-	// KASSERT(as->as_pbase2 != 0);
-	// KASSERT(as->as_npages2 != 0);
-	// KASSERT(as->as_stackpbase != 0);
-	// KASSERT((as->as_vbase1 & PAGE_FRAME) == as->as_vbase1);
-	// KASSERT((as->as_pbase1 & PAGE_FRAME) == as->as_pbase1);
-	// KASSERT((as->as_vbase2 & PAGE_FRAME) == as->as_vbase2);
-	// KASSERT((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
-	// KASSERT((as->as_stackpbase & PAGE_FRAME) == as->as_stackpbase);
+	KASSERT(as->as_stackbase != 0);
+	KASSERT(as->as_pgtable != NULL);
 
-	// vbase1 = as->as_vbase1;
-	// vtop1 = vbase1 + as->as_npages1 * PAGE_SIZE;
-	// vbase2 = as->as_vbase2;
-	// vtop2 = vbase2 + as->as_npages2 * PAGE_SIZE;
-	// stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
-	// stacktop = USERSTACK;
+	// Make sure the faultadress is not corrupt
+	KASSERT(faultaddress < USERSTACK-STACK_SIZE);
+	// KASSERT(faultaddress > as->as_heapbase);
 
-	// if (faultaddress >= vbase1 && faultaddress < vtop1) {
-	// 	paddr = (faultaddress - vbase1) + as->as_pbase1;
-	// }
-	// else if (faultaddress >= vbase2 && faultaddress < vtop2) {
-	// 	paddr = (faultaddress - vbase2) + as->as_pbase2;
-	// }
-	// else if (faultaddress >= stackbase && faultaddress < stacktop) {
-	// 	paddr = (faultaddress - stackbase) + as->as_stackpbase;
-	// }
-	// else {
-	// 	return EFAULT;
-	// }
+	int outer_page_index = GET_OUTER_TABLE_INDEX(faultaddress);
+	int inner_page_index = GET_INNER_TABLE_INDEX(faultaddress);
+	// kprintf("the outer page index: %d, the inner page_index: %d\n", outer_page_index, inner_page_index);
+	struct inner_pgtable *inner_table = as->as_pgtable->inner_mapping[outer_page_index];
+
+	if (inner_table != NULL) {
+		// kprintf("inner page table!\n");
+		// already exists
+		if (inner_table->p_addrs[inner_page_index] != 0) {
+			paddr = inner_table->p_addrs[inner_page_index];
+		}
+		// does not exist
+		else {
+			paddr = page_alloc();
+			as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index] = paddr;
+		}
+	}
+	
+	// inner page table does not exist
+	else {
+		as->as_pgtable->inner_mapping[outer_page_index] = create_inner_pgtable();
+		if (as->as_pgtable->inner_mapping[outer_page_index] == NULL) {
+			return ENOMEM;
+		}
+
+		paddr = page_alloc();
+		as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index] = paddr;
+	}
+
+	KASSERT(paddr != 0);
 
 	// /* make sure it's page-aligned */
-	// KASSERT((paddr & PAGE_FRAME) == paddr);
+	KASSERT((paddr & PAGE_FRAME) == paddr);
 
-	// /* Disable interrupts on this CPU while frobbing the TLB. */
-	// spl = splhigh();
+	/* Disable interrupts on this CPU while frobbing the TLB. */
+	spl = splhigh();
 
-	// for (i=0; i<NUM_TLB; i++) {
-	// 	tlb_read(&ehi, &elo, i);
-	// 	if (elo & TLBLO_VALID) {
-	// 		continue;
-	// 	}
-	// 	ehi = faultaddress;
-	// 	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
-	// 	DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
-	// 	tlb_write(ehi, elo, i);
-	// 	splx(spl);
-	// 	return 0;
-	// }
+	for (i=0; i<NUM_TLB; i++) {
+		tlb_read(&ehi, &elo, i);
+		if (elo & TLBLO_VALID) {
+			continue;
+		}
+		ehi = faultaddress;
+		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+		DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+		tlb_write(ehi, elo, i);
+		splx(spl);
+		return 0;
+	}
 
-	// kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
-	// splx(spl);
+	kprintf("vm: Ran out of TLB entries - cannot handle page fault\n");
+	splx(spl);
 	return EFAULT;
 }
 
-void coremap_bootstrap_test(void)
-{	
-	paddr_t pa = ram_getsize();
-	paddr_t fa = ram_getfirstfree();
-	int max_page = (pa - fa) / PAGE_SIZE;
-	kprintf("ram_getsize %d\n", pa);
-	kprintf("ram_first_addr %d\n", fa);
-	kprintf("# of available pages %d\n", max_page);
+struct inner_pgtable *
+create_inner_pgtable() {
+	struct inner_pgtable *inner_table = (struct inner_pgtable *)kmalloc(sizeof(struct inner_pgtable));
+	if (inner_table == NULL) {
+		return NULL;
+	}
+
+	/* Initialize the entires to be 0 to begin with */
+	for (int i = 0; i < PG_TABLE_SIZE; i++) {
+		inner_table->p_addrs[i] = 0;
+	}
+
+	return inner_table;
 }
 
 /* Coremap Functions */
@@ -282,15 +293,15 @@ void coremap_bootstrap(void)
 }
 
 paddr_t page_alloc() {
-	kprintf("in page_alloc\n");
+	// kprintf("in page_alloc\n");
 	paddr_t pa;
 	lock_acquire(cm->cm_lock);
 	for (unsigned long i = first_page_index; i < total_num_pages; i++) {
 		if (page_free(i)) {
-			kprintf("got a free page at index %ld\n", i);
+			// kprintf("got a free page at index %ld\n", i);
 			cm->cm_entries[i].status = CM_DIRTY;
 			pa = get_page_address(i);
-			kprintf("the physical page is %d\n", pa);
+			// kprintf("the physical page is %d\n", pa);
 			break;
 		}
 	}

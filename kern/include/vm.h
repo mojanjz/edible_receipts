@@ -30,6 +30,8 @@
 #ifndef _VM_H_
 #define _VM_H_
 
+#include <machine/vm.h>
+
 /*
  * VM system-related definitions.
  */
@@ -52,18 +54,18 @@ struct coremap {
 };
 
 struct outer_pgtable{
-    struct inner_pgtable *inner_mapping[PAGE_SIZE/4];
+    struct inner_pgtable *inner_mapping[PG_TABLE_SIZE];
 };
 
 struct inner_pgtable{
-    struct paddr_t p_addrs[PAGE_SIZE/4];
+    paddr_t p_addrs[PG_TABLE_SIZE];
 };
 
 void coremap_bootstrap(void);
 void cm_incref(unsigned long cm_index);
 bool cm_decref(unsigned long cm_index);
+unsigned long get_cm_index(paddr_t pa);
 
-#include <machine/vm.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
@@ -85,7 +87,5 @@ paddr_t getppages(unsigned long npages);
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown_all(void);
 void vm_tlbshootdown(const struct tlbshootdown *);
-
-unsigned long get_cm_index(paddr_t pa);
 
 #endif /* _VM_H_ */

@@ -41,6 +41,7 @@
 #include <vm.h>
 
 void as_destroy_pgtable(struct addrspace *as);
+void as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new);
 
 // /*
 //  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -209,7 +210,7 @@ as_create(void)
 	}
 
 	for (int i = 0; i < PG_TABLE_SIZE; i++) {
-		as->as_pgtable[i] = NULL; 
+		as->as_pgtable->inner_mapping[i] = NULL; 
 	}
 
 	return as;
@@ -225,8 +226,8 @@ as_destroy(struct addrspace *as)
 void
 as_destroy_pgtable(struct addrspace *as) {
 	for (int i = 0; i < PG_TABLE_SIZE; i++) {
-		if (as->as_pgtable[i] != NULL) {
-			kfree(*as_pgtable[i]); //TODO: confirm this pointer logic
+		if (as->as_pgtable->inner_mapping[i] != NULL) {
+			kfree(as->as_pgtable->inner_mapping[i]); //TODO: confirm this pointer logic
 		}
 	}
 	
@@ -263,7 +264,6 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		 int readable, int writeable, int executable)
 {
-	size_t npages;
 
 	// /* Align the region. First, the base... */
 	// sz += vaddr & ~(vaddr_t)PAGE_FRAME;
@@ -320,7 +320,7 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-
+	(void) as;
 	*stackptr = USERSTACK - STACK_SIZE;
 	return 0;
 }
@@ -342,9 +342,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	new->as_pgtable = old->as_pgtable;
 
 	for (int i=0; i< PG_TABLE_SIZE; i++) {
-		if (old->as_pgtable[i] != NULL) {
-			new->as_pgtable[i] = kmalloc(sizeof(struct inner_pgtable));
-			as_copy_inner_pgtable(old->as_pgtable[i], new->as_pgtable[i]);
+		if (old->as_pgtable->inner_mapping[i] != NULL) {
+			new->as_pgtable->inner_mapping[i] = kmalloc(sizeof(struct inner_pgtable));
+			as_copy_inner_pgtable(old->as_pgtable->inner_mapping[i], new->as_pgtable->inner_mapping[i]);
 		}
 	}
 

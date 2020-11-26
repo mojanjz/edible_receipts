@@ -62,7 +62,7 @@ struct addrspace {
         paddr_t as_stackpbase;
 #else
         /* Put stuff here for your VM system */
-        struct outer_pgtable as_pgtable;
+        struct outer_pgtable *as_pgtable;
         vaddr_t as_heapbase;
         size_t as_heapsz;
         vaddr_t as_stackbase;

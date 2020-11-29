@@ -58,7 +58,7 @@ sys_sbrk(ssize_t amount, int *retval)
 
     // Store the current (unchanged) value of break/end address of heap region
     *retval = (int)(as->as_heapbase + as->as_heapsz);
-    as->as_heapbase = as->as_heapbase + amount;
+    as->as_heapsz = as->as_heapsz + amount; //TODO: check that pages arent unaligned
 
     return 0; 
 }

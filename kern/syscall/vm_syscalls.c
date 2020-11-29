@@ -27,27 +27,12 @@
  * SUCH DAMAGE.
  */
 #include <types.h>
-#include <clock.h>
-#include <copyinout.h>
 #include <syscall.h>
 #include <kern/errno.h>
-#include <kern/limits.h>
-#include <kern/fcntl.h>
-#include <filetable.h>
 #include <lib.h>
-#include <uio.h>
 #include <current.h>
-#include <vnode.h>
-#include <kern/seek.h>
-#include <stat.h>
-#include <file_entry.h>
 #include <proc.h>
-#include <current.h>
-#include <vnode.h>
-#include <limits.h>
 #include <addrspace.h>
-#include <mips/trapframe.h>
-#include <vfs.h>
 #include <vm_syscalls.h>
 
 /*
@@ -56,7 +41,24 @@
 int
 sys_sbrk(ssize_t amount, int *retval)
 {
-    (void)amount;
-    (void)retval;
+    // struct addrspace *as = kmalloc(sizeof(struct addrspace));
+    struct addrspace *as = curproc->p_addrspace;
+    if (as == NULL) {
+        return ENOMEM;
+    }
+    //Do checks to make sure that this new region is valid
+    // Make sure that if amount is negative, that it is a valid value
+    if (as->as_heapbase + as->as_heapsz + amount < as->as_heapbase) {
+        return EINVAL;
+    }
+    // Make sure that heap doesn't crash into stack
+    if(as->as_heapbase + as->as_heapsz >= as->as_stackbase) {
+        return ENOMEM;
+    }
+
+    // Store the current (unchanged) value of break/end address of heap region
+    *retval = (int)(as->as_heapbase + as->as_heapsz);
+    as->as_heapbase = as->as_heapbase + amount;
+
     return 0; 
 }

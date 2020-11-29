@@ -195,7 +195,7 @@ struct addrspace *
 as_create(void)
 {
 	struct addrspace *as = kmalloc(sizeof(struct addrspace));
-	if (as==NULL) {
+	if (as == NULL) {
 		return NULL;
 	}
 

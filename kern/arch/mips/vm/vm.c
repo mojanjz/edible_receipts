@@ -51,6 +51,10 @@ void
 vm_bootstrap(void)
 {
 	coremap_bootstrap();
+	as_copy_lock = lock_create("as_copy_lock");
+	if (as_copy_lock == NULL) {
+		panic("Not able to make as_copy_lock");
+	}
 }
 
 paddr_t

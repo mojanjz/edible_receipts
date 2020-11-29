@@ -186,6 +186,10 @@ syscall(struct trapframe *tf)
 						(char **)tf->tf_a1);
 		break;
 
+		case SYS_sbrk:
+		err = sys_sbrk((ssize_t)tf->tf_a0, &retval);
+		break;
+
 	    default:
 		err = ENOSYS;
 		break;

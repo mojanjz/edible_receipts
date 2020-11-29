@@ -26,40 +26,37 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
-#ifndef _SYSCALL_H_
-#define _SYSCALL_H_
-
-#include <file_syscalls.h>
-#include <proc_syscalls.h>
-#include <vm_syscalls.h>
-#include <directory_syscalls.h>
+#include <types.h>
+#include <clock.h>
+#include <copyinout.h>
+#include <syscall.h>
+#include <kern/errno.h>
+#include <kern/limits.h>
+#include <kern/fcntl.h>
 #include <filetable.h>
-#include <cdefs.h> /* for __DEAD */
-struct trapframe; /* from <machine/trapframe.h> */
+#include <lib.h>
+#include <uio.h>
+#include <current.h>
+#include <vnode.h>
+#include <kern/seek.h>
+#include <stat.h>
+#include <file_entry.h>
+#include <proc.h>
+#include <current.h>
+#include <vnode.h>
+#include <limits.h>
+#include <addrspace.h>
+#include <mips/trapframe.h>
+#include <vfs.h>
+#include <vm_syscalls.h>
 
 /*
- * The system call dispatcher.
+ *
  */
-
-void syscall(struct trapframe *tf);
-
-/*
- * Support functions.
- */
-
-/* Helper for fork(). You write this. */
-void enter_forked_process(struct trapframe *tf);
-
-/* Enter user mode. Does not return. */
-__DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
-		       vaddr_t stackptr, vaddr_t entrypoint);
-
-
-/*
- * Prototypes for IN-KERNEL entry points for system call implementations.
- */
-
-int sys_reboot(int code);
-int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
-#endif /* _SYSCALL_H_ */
+int
+sys_sbrk(ssize_t amount, int *retval)
+{
+    (void)amount;
+    (void)retval;
+    return 0; 
+}

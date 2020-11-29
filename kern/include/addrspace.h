@@ -111,7 +111,7 @@ struct addrspace {
  */
 
 struct addrspace *as_create(void);
-int               as_copy(struct addrspace *src, struct addrspace **ret);
+int               as_copy(struct addrspace *src, struct addrspace **ret, pid_t child_pid);
 void              as_activate(void);
 void              as_deactivate(void);
 void              as_destroy(struct addrspace *);

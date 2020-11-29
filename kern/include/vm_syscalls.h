@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
+ * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
  *	The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,39 +27,13 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _SYSCALL_H_
-#define _SYSCALL_H_
+#ifndef _VM_SYSCALLS_H_
+#define _VM_SYSCALLS_H_
 
-#include <file_syscalls.h>
-#include <proc_syscalls.h>
-#include <vm_syscalls.h>
-#include <directory_syscalls.h>
-#include <filetable.h>
-#include <cdefs.h> /* for __DEAD */
-struct trapframe; /* from <machine/trapframe.h> */
+#include <types.h>
+#include <current.h>
+#include <mips/trapframe.h>
 
-/*
- * The system call dispatcher.
- */
+int sys_sbrk(ssize_t amout, int *retval);
 
-void syscall(struct trapframe *tf);
-
-/*
- * Support functions.
- */
-
-/* Helper for fork(). You write this. */
-void enter_forked_process(struct trapframe *tf);
-
-/* Enter user mode. Does not return. */
-__DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
-		       vaddr_t stackptr, vaddr_t entrypoint);
-
-
-/*
- * Prototypes for IN-KERNEL entry points for system call implementations.
- */
-
-int sys_reboot(int code);
-int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
-#endif /* _SYSCALL_H_ */
+#endif

@@ -104,6 +104,7 @@ sys_fork(struct trapframe *tf, int *retval)
     }
     
     /* Update the return value for the parent fork */
+    KASSERT(child_pid == child_proc->p_pid);
     *retval = (int) child_pid;
     return 0; 
 }

@@ -325,8 +325,14 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 }
 
 int
-as_copy(struct addrspace *old, struct addrspace **ret)
+as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 {
+
+	struct proc *child_proc = get_process_from_pid(child_pid);
+	KASSERT(child_proc != NULL);
+	KASSERT(child_proc->p_pid == child_pid);
+	KASSERT(child_proc->p_addrspace == *ret);
+
 	struct addrspace *new;
 
 	new = as_create();
@@ -334,18 +340,33 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		return ENOMEM;
 	}
 
+	lock_acquire(as_copy_lock);
 	//Copy over values from existing address space
 	new->as_heapbase = old->as_heapbase;
 	new->as_heapsz = old->as_heapsz;
 	new->as_stackbase = old->as_stackbase;
-	new->as_pgtable = old->as_pgtable;
 
 	for (int i=0; i< PG_TABLE_SIZE; i++) {
 		if (old->as_pgtable->inner_mapping[i] != NULL) {
 			new->as_pgtable->inner_mapping[i] = kmalloc(sizeof(struct inner_pgtable));
+			if (new->as_pgtable->inner_mapping[i] == NULL){
+				lock_release(as_copy_lock);
+				return ENOMEM;
+			}
 			as_copy_inner_pgtable(old->as_pgtable->inner_mapping[i], new->as_pgtable->inner_mapping[i]);
 		}
 	}
+
+	child_proc = get_process_from_pid(child_pid);
+	KASSERT(child_proc != NULL);
+	KASSERT(child_proc->p_pid == child_pid);
+	KASSERT(child_proc->p_addrspace == *ret);
+	
+	KASSERT(new->as_heapbase == old->as_heapbase);
+	KASSERT(new->as_heapsz == old->as_heapsz);
+	KASSERT(new->as_pgtable != NULL);
+	
+	lock_release(as_copy_lock);
 
 	*ret = new;
 	return 0;

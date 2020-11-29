@@ -286,6 +286,9 @@ proc_create_fork(const char *name, int *error)
 		*error = ENOMEM;
 		return NULL;
 	}
+
+	/* PID Fields */
+	configure_pid_fields(child_proc);
 	
 	/* Copy the address space of the parent */
     struct addrspace *child_as = (struct addrspace *)kmalloc(sizeof(struct addrspace));
@@ -293,12 +296,13 @@ proc_create_fork(const char *name, int *error)
 		*error = ENOMEM;
         return NULL;
     }
-    err = as_copy(curproc->p_addrspace, &child_as);
+
+	child_proc->p_addrspace = child_as;
+    err = as_copy(curproc->p_addrspace, &child_proc->p_addrspace,child_proc->p_pid);
     if(err) {
 		*error = err;
         return NULL;
     }
-	child_proc->p_addrspace = child_as;
 
 	/*
 	 * Lock the current process to copy its current directory.
@@ -312,8 +316,7 @@ proc_create_fork(const char *name, int *error)
 	}
 	spinlock_release(&curproc->p_lock);
 
-	/* PID Fields */
-	configure_pid_fields(child_proc);
+	
 
 	return child_proc;
 }
@@ -567,4 +570,9 @@ init_pid_table()
 	// for (int i = __PID_MIN; i < __PID_MAX; i++){ /* Make sure not to assign special PIDs */
 	// 	pid_table->process_statuses[i] = AVAILABLE;
 	// }
+}
+
+struct proc *get_process_from_pid(pid_t pid)
+{
+	return array_get(pid_table->processes,pid); 
 }

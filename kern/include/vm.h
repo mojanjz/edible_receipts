@@ -49,6 +49,7 @@
 #define GET_OUTER_TABLE_INDEX(vaddr) (((vaddr) & OUTER_TABLE_INDEX) >> 22)
 #define GET_INNER_TABLE_INDEX(vaddr) (((vaddr) & INNER_TABLE_INDEX) >> 12)
 
+struct lock *as_copy_lock;
 
 struct coremap_entry {
 	int status; // free, clean, dirty, fixed

@@ -123,4 +123,5 @@ pid_t issue_pid(void);
 void configure_pid_fields(struct proc *child_proc);
 void init_pid_table(void);
 void delete_pid_entry(pid_t pid);
+struct proc *get_process_from_pid(pid_t pid);
 #endif /* _PROC_H_ */

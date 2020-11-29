@@ -35,6 +35,8 @@
 #include <addrspace.h>
 #include <vm_syscalls.h>
 
+void free_heap(vaddr_t start, vaddr_t stop);
+
 /*
  *
  */
@@ -44,21 +46,52 @@ sys_sbrk(ssize_t amount, int *retval)
     // struct addrspace *as = kmalloc(sizeof(struct addrspace));
     struct addrspace *as = curproc->p_addrspace;
     if (as == NULL) {
+        kprintf("HEAP ERROR");
         return ENOMEM;
     }
     //Do checks to make sure that this new region is valid
+    //Make sure that the amount to increase is rounded to the nearest page
+    if (amount % PAGE_SIZE != 0){
+        amount += (PAGE_SIZE - (amount%PAGE_SIZE));
+    }
+
     // Make sure that if amount is negative, that it is a valid value
     if (as->as_heapbase + as->as_heapsz + amount < as->as_heapbase) {
+        kprintf("HEAP ERROR");
         return EINVAL;
     }
     // Make sure that heap doesn't crash into stack
     if(as->as_heapbase + as->as_heapsz >= as->as_stackbase) {
+        kprintf("HEAP ERROR");
         return ENOMEM;
+    }
+
+    //Having concluded that amount is valid:
+    if (amount > 0) {
+
+    } else if (amount < 0) {
+        // Free all the pages that the heap will no longer contain
+        free_heap(as->as_heapbase + as->as_heapsz + amount, as->as_heapbase + as->as_heapsz);
     }
 
     // Store the current (unchanged) value of break/end address of heap region
     *retval = (int)(as->as_heapbase + as->as_heapsz);
-    as->as_heapsz = as->as_heapsz + amount; //TODO: check that pages arent unaligned
+    as->as_heapsz = as->as_heapsz + amount;
 
     return 0; 
+}
+
+/*
+ *
+ */
+void free_heap(vaddr_t start, vaddr_t stop)
+{
+    kprintf("In free_heap\n");
+    vaddr_t free_addr = start;
+    int n = 0;
+    while (free_addr <= stop) {
+        free_addr += PAGE_SIZE * n;
+        free_vpage(free_addr);
+        n += 1;
+    }
 }

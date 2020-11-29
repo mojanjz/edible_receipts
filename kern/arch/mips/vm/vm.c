@@ -89,7 +89,10 @@ alloc_kpages(unsigned npages)
 	return PADDR_TO_KVADDR(pa);
 }
 
-/* Won't free a page unless there are no more references to it */
+/* 
+ *FOR KERNEL PAGES ONLY 
+ * Won't free a page unless there are no more references to it
+ */
 void
 free_kpages(vaddr_t addr)
 {	
@@ -106,6 +109,23 @@ free_kpages(vaddr_t addr)
 	}
 	lock_release(cm->cm_lock);
 	
+}
+
+/*
+ * Free a virtual page
+ */
+void
+free_vpage(vaddr_t addr)
+{
+	struct addrspace *as = proc_getas();
+
+	int inner_page_index = GET_OUTER_TABLE_INDEX(addr);
+    int outer_page_index = GET_OUTER_TABLE_INDEX(addr);
+
+	int cm_index = get_cm_index(as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index]);
+	free_cm_entries(cm_index, 1);
+
+
 }
 
 void
@@ -239,7 +259,9 @@ create_inner_pgtable() {
 
 	/* Initialize the entires to be 0 to begin with */
 	for (int i = 0; i < PG_TABLE_SIZE; i++) {
+		// inner_table->p_addrs[i] = (paddr_t)NULL;
 		inner_table->p_addrs[i] = 0;
+
 	}
 
 	return inner_table;

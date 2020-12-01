@@ -341,6 +341,7 @@ file      vm/kmalloc.c
 file      arch/mips/vm/vm.c
 file	  arch/mips/vm/coremap.c
 
+
 optofffile dumbvm   vm/addrspace.c
 
 #
@@ -382,6 +383,7 @@ file      syscall/directory_syscalls.c
 file      syscall/file_syscalls.c
 file      syscall/filetable.c
 file      syscall/proc_syscalls.c
+file      syscall/vm_syscalls.c
 
 #
 # Startup and initialization

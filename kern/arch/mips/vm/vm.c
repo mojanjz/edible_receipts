@@ -343,6 +343,10 @@ paddr_t page_nalloc(unsigned long npages) {
 	bool enough_space = true;
 	paddr_t pa = 0;
 
+	if (npages > total_num_pages) {
+		return EINVAL;
+	}
+
 	if (npages == 1) {
 		return page_alloc();
 	}

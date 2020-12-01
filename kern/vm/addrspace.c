@@ -42,6 +42,7 @@
 
 void as_destroy_pgtable(struct addrspace *as);
 void as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new);
+void invalidate_tlb(void);
 
 // /*
 //  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -357,6 +358,8 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 		}
 	}
 
+	invalidate_tlb();
+
 	child_proc = get_process_from_pid(child_pid);
 	KASSERT(child_proc != NULL);
 	KASSERT(child_proc->p_pid == child_pid);
@@ -382,4 +385,17 @@ as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new)
 		unsigned long index = get_cm_index(new->p_addrs[i]);
 		cm_incref(index);
 	}
+}
+
+void
+invalidate_tlb()
+{
+	int spl = splhigh();
+	uint32_t index;
+
+	for (index=0; index<NUM_TLB; index++) {
+		tlb_write(TLBHI_INVALID(index), TLBLO_INVALID(), index);
+	}
+
+	splx(spl);
 }

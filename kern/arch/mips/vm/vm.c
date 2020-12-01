@@ -247,22 +247,27 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
 
+	bool in_tlb = false;
+	ehi = faultaddress;
+	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+
 	for (i=0; i<NUM_TLB; i++) {
 		tlb_read(&ehi, &elo, i);
 		if (elo & TLBLO_VALID) {
 			continue;
 		}
-		ehi = faultaddress;
-		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
-		DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+
+		DEBUG(DB_VM, "vm: 0x%x -> 0x%x\n", faultaddress, paddr);
 		tlb_write(ehi, elo, i);
-		splx(spl);
-		return 0;
+		in_tlb = true;
 	}
 
-	kprintf("vm: Ran out of TLB entries - cannot handle page fault\n");
+	if (!in_tlb) {
+		tlb_random(ehi, elo);
+	}
+
 	splx(spl);
-	return EFAULT;
+	return 0;
 }
 
 struct inner_pgtable *
@@ -357,6 +362,10 @@ paddr_t page_nalloc(unsigned long npages) {
 	unsigned long i = first_page_index;
 	bool enough_space = true;
 	paddr_t pa = 0;
+
+	if (npages > total_num_pages) {
+		return EINVAL;
+	}
 
 	if (npages == 1) {
 		return page_alloc();

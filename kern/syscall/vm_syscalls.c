@@ -34,6 +34,7 @@
 #include <proc.h>
 #include <addrspace.h>
 #include <vm_syscalls.h>
+#include <vm.h>
 
 void free_heap(vaddr_t start, vaddr_t stop);
 
@@ -43,10 +44,12 @@ void free_heap(vaddr_t start, vaddr_t stop);
 int
 sys_sbrk(ssize_t amount, int *retval)
 {
+    lock_acquire(vm_lock);
     // struct addrspace *as = kmalloc(sizeof(struct addrspace));
     struct addrspace *as = curproc->p_addrspace;
     if (as == NULL) {
         kprintf("HEAP ERROR");
+        lock_release(vm_lock);
         return ENOMEM;
     }
     //Do checks to make sure that this new region is valid
@@ -58,11 +61,13 @@ sys_sbrk(ssize_t amount, int *retval)
     // Make sure that if amount is negative, that it is a valid value
     if (as->as_heapbase + as->as_heapsz + amount < as->as_heapbase) {
         kprintf("HEAP ERROR");
+        lock_release(vm_lock);
         return EINVAL;
     }
     // Make sure that heap doesn't crash into stack
     if(as->as_heapbase + as->as_heapsz >= as->as_stackbase) {
         kprintf("HEAP ERROR");
+        lock_release(vm_lock);
         return ENOMEM;
     }
 
@@ -77,7 +82,7 @@ sys_sbrk(ssize_t amount, int *retval)
     // Store the current (unchanged) value of break/end address of heap region
     *retval = (int)(as->as_heapbase + as->as_heapsz);
     as->as_heapsz = as->as_heapsz + amount;
-
+    lock_release(vm_lock);
     return 0; 
 }
 

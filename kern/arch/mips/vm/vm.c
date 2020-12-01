@@ -52,9 +52,9 @@ void
 vm_bootstrap(void)
 {
 	coremap_bootstrap();
-	as_copy_lock = lock_create("as_copy_lock");
-	if (as_copy_lock == NULL) {
-		panic("Not able to make as_copy_lock");
+	vm_lock = lock_create("vm_lock");
+	if (vm_lock == NULL) {
+		panic("Not able to make vm_lock");
 	}
 }
 
@@ -146,9 +146,9 @@ int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {	
 	// kprintf("in vm fault :D with address: 0x%x\n", faultaddress);
-	(void) faulttype;
-	(void) faultaddress;
-	// vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
+
+	lock_acquire(vm_lock);
+
 	paddr_t paddr=0;
 	int i;
 	uint32_t ehi, elo;
@@ -161,17 +161,21 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		 * No address space set up. This is probably also a
 		 * kernel fault early in boot.
 		 */
+		lock_release(vm_lock);
 		return EFAULT;
 	}
 
 	//Make sure that faultaddress is valid 
-	if(faulttype != VM_FAULT_WRITE){
-		if (faultaddress < (as->as_stackbase) && faultaddress >= (as->as_heapbase + as->as_heapsz)) {
-			kprintf("Invalid address");
-			kprintf("Fault type: %d",faulttype);
-			return SIGSEGV;
-		}
+	// if(faulttype != VM_FAULT_WRITE && faulttype != VM_FAULT_READ){
+	if (faultaddress < (as->as_stackbase) && faultaddress >= (as->as_heapbase + as->as_heapsz)) {
+		kprintf("Invalid address: 0x%x\n",faultaddress);
+		kprintf("Fault type: %d\n",faulttype);
+		kprintf("heap base: 0x%x and size %d\n", as->as_heapbase, as->as_heapsz);
+		kprintf("Stack base: 0x%x\n", as->as_stackbase);
+		lock_release(vm_lock);
+		return SIGSEGV;
 	}
+	// }
 		
 
 	faultaddress &= PAGE_FRAME;
@@ -186,6 +190,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	    case VM_FAULT_WRITE:
 		break;
 	    default:
+		lock_release(vm_lock);
 		return EINVAL;
 	}
 
@@ -195,6 +200,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		 * in boot. Return EFAULT so as to panic instead of
 		 * getting into an infinite faulting loop.
 		 */
+		lock_release(vm_lock);
 		return EFAULT;
 	}
 
@@ -205,7 +211,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	KASSERT(as->as_pgtable != NULL);
 
 	// Make sure the faultadress is not corrupt
-	KASSERT(faultaddress < USERSTACK-STACK_SIZE);
+	// KASSERT(faultaddress < as->as_stackbase);
 	// KASSERT(faultaddress > as->as_heapbase);
 
 	
@@ -232,6 +238,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	else {
 		as->as_pgtable->inner_mapping[outer_page_index] = create_inner_pgtable();
 		if (as->as_pgtable->inner_mapping[outer_page_index] == NULL) {
+			lock_release(vm_lock);
 			return ENOMEM;
 		}
 
@@ -248,8 +255,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	spl = splhigh();
 
 	bool in_tlb = false;
-	ehi = faultaddress;
-	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
 
 	for (i=0; i<NUM_TLB; i++) {
 		tlb_read(&ehi, &elo, i);
@@ -257,16 +262,24 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 			continue;
 		}
 
+		ehi = faultaddress;
+		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
 		DEBUG(DB_VM, "vm: 0x%x -> 0x%x\n", faultaddress, paddr);
 		tlb_write(ehi, elo, i);
 		in_tlb = true;
+		splx(spl);
+		lock_release(vm_lock);
+		return 0;
 	}
 
 	if (!in_tlb) {
+		ehi = faultaddress;
+		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
 		tlb_random(ehi, elo);
 	}
 
 	splx(spl);
+	lock_release(vm_lock);
 	return 0;
 }
 

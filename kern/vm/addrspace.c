@@ -44,154 +44,6 @@ void as_destroy_pgtable(struct addrspace *as);
 void as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new);
 void invalidate_tlb(void);
 
-// /*
-//  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
-//  * assignment, this file is not compiled or linked or in any way
-//  * used. The cheesy hack versions in dumbvm.c are used instead.
-//  */
-
-// struct addrspace *
-// as_create(void)
-// {
-// 	struct addrspace *as;
-
-// 	as = kmalloc(sizeof(struct addrspace));
-// 	if (as == NULL) {
-// 		return NULL;
-// 	}
-
-// 	/*
-// 	 * Initialize as needed.
-// 	 */
-
-// 	return as;
-// }
-
-// int
-// as_copy(struct addrspace *old, struct addrspace **ret)
-// {
-// 	struct addrspace *newas;
-
-// 	newas = as_create();
-// 	if (newas==NULL) {
-// 		return ENOMEM;
-// 	}
-
-// 	/*
-// 	 * Write this.
-// 	 */
-
-// 	(void)old;
-
-// 	*ret = newas;
-// 	return 0;
-// }
-
-// void
-// as_destroy(struct addrspace *as)
-// {
-// 	/*
-// 	 * Clean up as needed.
-// 	 */
-
-// 	kfree(as);
-// }
-
-// void
-// as_activate(void)
-// {
-// 	struct addrspace *as;
-
-// 	as = curproc_getas();
-// 	if (as == NULL) {
-// 		/*
-// 		 * Kernel thread without an address space; leave the
-// 		 * prior address space in place.
-// 		 */
-// 		return;
-// 	}
-
-// 	/*
-// 	 * Write this.
-// 	 */
-
-	
-// }
-
-// void
-// as_deactivate(void)
-// {
-// 	/*
-// 	 * Write this. For many designs it won't need to actually do
-// 	 * anything. See proc.c for an explanation of why it (might)
-// 	 * be needed.
-// 	 */
-// }
-
-// /*
-//  * Set up a segment at virtual address VADDR of size MEMSIZE. The
-//  * segment in memory extends from VADDR up to (but not including)
-//  * VADDR+MEMSIZE.
-//  *
-//  * The READABLE, WRITEABLE, and EXECUTABLE flags are set if read,
-//  * write, or execute permission should be set on the segment. At the
-//  * moment, these are ignored. When you write the VM system, you may
-//  * want to implement them.
-//  */
-// int
-// as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
-// 		 int readable, int writeable, int executable)
-// {
-// 	/*
-// 	 * Write this.
-// 	 */
-
-// 	(void)as;
-// 	(void)vaddr;
-// 	(void)sz;
-// 	(void)readable;
-// 	(void)writeable;
-// 	(void)executable;
-// 	return EUNIMP;
-// }
-
-// int
-// as_prepare_load(struct addrspace *as)
-// {
-// 	/*
-// 	 * Write this.
-// 	 */
-
-// 	(void)as;
-// 	return 0;
-// }
-
-// int
-// as_complete_load(struct addrspace *as)
-// {
-// 	/*
-// 	 * Write this.
-// 	 */
-
-// 	(void)as;
-// 	return 0;
-// }
-
-// int
-// as_define_stack(struct addrspace *as, vaddr_t *stackptr)
-// {
-// 	/*
-// 	 * Write this.
-// 	 */
-
-// 	(void)as;
-
-// 	/* Initial user-level stack pointer */
-// 	*stackptr = USERSTACK;
-
-// 	return 0;
-// }
-
 struct addrspace *
 as_create(void)
 {
@@ -220,8 +72,10 @@ as_create(void)
 void
 as_destroy(struct addrspace *as)
 {
+	lock_acquire(vm_lock);
 	as_destroy_pgtable(as);
 	kfree(as);
+	lock_release(vm_lock);
 }
 
 void
@@ -265,6 +119,7 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		 int readable, int writeable, int executable)
 {
+	lock_acquire(vm_lock);
 	// /* Align the region. First, the base... */
 	// sz += vaddr & ~(vaddr_t)PAGE_FRAME;
 	// vaddr &= PAGE_FRAME;
@@ -279,19 +134,20 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	(void)writeable;
 	(void)executable;
 
-	// Check that stack and heap have not collided 
+	// Check that segment and heap have not collided 
 	vaddr_t end_of_region = vaddr + sz;
 	if (end_of_region > as->as_heapbase) {
 		//Get the base of the end of region page
 		vaddr_t page_aligned_eor = 0xfffff000 & end_of_region;
 		page_aligned_eor += PAGE_SIZE;
-
 		// Actually move the heap base
 		as->as_heapbase = page_aligned_eor;
 	}
+
 	// Make sure that heap has not collided into stack
 	KASSERT(as->as_heapbase + as->as_heapsz < as->as_stackbase);
-
+	kprintf("Heap base in as_define_region: 0x%x\n", as->as_heapbase);
+	lock_release(vm_lock);
 	return 0;
 }
 
@@ -321,7 +177,7 @@ int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
 	(void) as;
-	*stackptr = USERSTACK - STACK_SIZE;
+	*stackptr = USERSTACK;
 	return 0;
 }
 
@@ -341,7 +197,7 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 		return ENOMEM;
 	}
 
-	lock_acquire(as_copy_lock);
+	lock_acquire(vm_lock);
 	//Copy over values from existing address space
 	new->as_heapbase = old->as_heapbase;
 	new->as_heapsz = old->as_heapsz;
@@ -351,7 +207,7 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 		if (old->as_pgtable->inner_mapping[i] != NULL) {
 			new->as_pgtable->inner_mapping[i] = kmalloc(sizeof(struct inner_pgtable));
 			if (new->as_pgtable->inner_mapping[i] == NULL){
-				lock_release(as_copy_lock);
+				lock_release(vm_lock);
 				return ENOMEM;
 			}
 			as_copy_inner_pgtable(old->as_pgtable->inner_mapping[i], new->as_pgtable->inner_mapping[i]);
@@ -369,7 +225,7 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 	KASSERT(new->as_heapsz == old->as_heapsz);
 	KASSERT(new->as_pgtable != NULL);
 	
-	lock_release(as_copy_lock);
+	lock_release(vm_lock);
 
 	*ret = new;
 	return 0;

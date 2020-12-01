@@ -8,6 +8,7 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
+#include <signal.h>
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -154,6 +155,25 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	struct addrspace *as;
 	int spl;
 
+	as = proc_getas();
+	if (as == NULL) {
+		/*
+		 * No address space set up. This is probably also a
+		 * kernel fault early in boot.
+		 */
+		return EFAULT;
+	}
+
+	//Make sure that faultaddress is valid 
+	if(faulttype != VM_FAULT_WRITE){
+		if (faultaddress < (as->as_stackbase) && faultaddress >= (as->as_heapbase + as->as_heapsz)) {
+			kprintf("Invalid address");
+			kprintf("Fault type: %d",faulttype);
+			return SIGSEGV;
+		}
+	}
+		
+
 	faultaddress &= PAGE_FRAME;
 
 	DEBUG(DB_VM, "vm: fault: 0x%x\n", faultaddress);
@@ -178,14 +198,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return EFAULT;
 	}
 
-	as = proc_getas();
-	if (as == NULL) {
-		/*
-		 * No address space set up. This is probably also a
-		 * kernel fault early in boot.
-		 */
-		return EFAULT;
-	}
+	
 
 	// /* Assert that the address space has been set up properly. */
 	KASSERT(as->as_stackbase != 0);
@@ -194,6 +207,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	// Make sure the faultadress is not corrupt
 	KASSERT(faultaddress < USERSTACK-STACK_SIZE);
 	// KASSERT(faultaddress > as->as_heapbase);
+
+	
 
 	int outer_page_index = GET_OUTER_TABLE_INDEX(faultaddress);
 	int inner_page_index = GET_INNER_TABLE_INDEX(faultaddress);

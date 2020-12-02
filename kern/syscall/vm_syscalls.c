@@ -44,12 +44,12 @@ void free_heap(vaddr_t start, vaddr_t stop);
 int
 sys_sbrk(ssize_t amount, int *retval)
 {
-    lock_acquire(vm_lock);
+    // lock_acquire(vm_lock);
     // struct addrspace *as = kmalloc(sizeof(struct addrspace));
     struct addrspace *as = curproc->p_addrspace;
     if (as == NULL) {
         kprintf("HEAP ERROR");
-        lock_release(vm_lock);
+        // lock_release(vm_lock);
         return ENOMEM;
     }
     //Do checks to make sure that this new region is valid
@@ -61,40 +61,41 @@ sys_sbrk(ssize_t amount, int *retval)
     // Make sure that if amount is negative, that it is a valid value
     if (as->as_heapbase + as->as_heapsz + amount < as->as_heapbase) {
         kprintf("HEAP ERROR");
-        lock_release(vm_lock);
+        // lock_release(vm_lock);
         return EINVAL;
     }
     // Make sure that heap doesn't crash into stack
     if(as->as_heapbase + as->as_heapsz >= as->as_stackbase) {
         kprintf("HEAP ERROR");
-        lock_release(vm_lock);
+        // lock_release(vm_lock);
         return ENOMEM;
     }
-
+    kprintf("Checkpoint 0");
     //Having concluded that amount is valid:
-    if (amount > 0) {
-
-    } else if (amount < 0) {
+    if (amount < 0) {
         // Free all the pages that the heap will no longer contain
         free_heap(as->as_heapbase + as->as_heapsz + amount, as->as_heapbase + as->as_heapsz);
     }
+    kprintf("Checkpoint 1");
 
     // Store the current (unchanged) value of break/end address of heap region
     *retval = (int)(as->as_heapbase + as->as_heapsz);
     as->as_heapsz = as->as_heapsz + amount;
-    lock_release(vm_lock);
+    kprintf("Checkpoint 2");
+    // lock_release(vm_lock);
+    kprintf("Checkpoint 3\n");
     return 0; 
 }
 
 /*
- *
+ * This function should free the physical memory in the vaddr range [start,stop]
  */
 void free_heap(vaddr_t start, vaddr_t stop)
 {
-    kprintf("In free_heap\n");
     vaddr_t free_addr = start;
     int n = 0;
     while (free_addr <= stop) {
+        kprintf("In free_heap\n");
         free_addr += PAGE_SIZE * n;
         free_vpage(free_addr);
         n += 1;

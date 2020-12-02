@@ -146,7 +146,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 	// Make sure that heap has not collided into stack
 	KASSERT(as->as_heapbase + as->as_heapsz < as->as_stackbase);
-	kprintf("Heap base in as_define_region: 0x%x\n", as->as_heapbase);
+	// kprintf("Heap base in as_define_region: 0x%x\n", as->as_heapbase);
 	lock_release(vm_lock);
 	return 0;
 }
@@ -237,9 +237,11 @@ as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new)
 {
 	
 	for(int i = 0; i < PG_TABLE_SIZE; i++){
-		new->p_addrs[i] = old->p_addrs[i];
-		unsigned long index = get_cm_index(new->p_addrs[i]);
-		cm_incref(index);
+		if (old->p_addrs[i] != 0) {
+			// allocate a new page 
+			new->p_addrs[i] = page_alloc();
+			memmove((void *)PADDR_TO_KVADDR(new->p_addrs[i]),(const void *)PADDR_TO_KVADDR(old->p_addrs[i]), PAGE_SIZE);
+		}
 	}
 }
 

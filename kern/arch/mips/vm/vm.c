@@ -168,10 +168,10 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	//Make sure that faultaddress is valid 
 	// if(faulttype != VM_FAULT_WRITE && faulttype != VM_FAULT_READ){
 	if (faultaddress < (as->as_stackbase) && faultaddress >= (as->as_heapbase + as->as_heapsz)) {
-		kprintf("Invalid address: 0x%x\n",faultaddress);
-		kprintf("Fault type: %d\n",faulttype);
-		kprintf("heap base: 0x%x and size %d\n", as->as_heapbase, as->as_heapsz);
-		kprintf("Stack base: 0x%x\n", as->as_stackbase);
+		// kprintf("Invalid address: 0x%x\n",faultaddress);
+		// kprintf("Fault type: %d\n",faulttype);
+		// kprintf("heap base: 0x%x and size %d\n", as->as_heapbase, as->as_heapsz);
+		// kprintf("Stack base: 0x%x\n", as->as_stackbase);
 		lock_release(vm_lock);
 		return SIGSEGV;
 	}
@@ -353,11 +353,12 @@ void coremap_bootstrap(void)
 
 paddr_t page_alloc() {
 	// kprintf("in page_alloc\n");
-	paddr_t pa;
+	paddr_t pa=0;
 	lock_acquire(cm->cm_lock);
 	for (unsigned long i = first_page_index; i < total_num_pages; i++) {
 		if (page_free(i)) {
 			// kprintf("got a free page at index %ld\n", i);
+			KASSERT(cm->cm_entries[i].status != CM_FIXED);
 			cm->cm_entries[i].status = CM_DIRTY;
 			pa = get_page_address(i);
 			// kprintf("the physical page is %d\n", pa);
@@ -365,6 +366,10 @@ paddr_t page_alloc() {
 		}
 	}
 	lock_release(cm->cm_lock);
+
+	if (pa == 0){
+		return ENOMEM;
+	}
 
 	// TODO ADD FREEING PAGES IF NO PAGE IS AVAILABLE
 	bzero((void *)PADDR_TO_KVADDR(pa), PAGE_SIZE);
@@ -384,14 +389,14 @@ paddr_t page_nalloc(unsigned long npages) {
 		return page_alloc();
 	}
 
-	kprintf("number of requested pages are %ld\n", npages);
+	// kprintf("number of requested pages are %ld\n", npages);
 
 	KASSERT(i+npages <= total_num_pages);
 
 	lock_acquire(cm->cm_lock);
 	while (i + npages <= total_num_pages) {
-		kprintf("index is %ld\n", i);
-		kprintf("total num pages is %ld\n", total_num_pages);
+		// kprintf("index is %ld\n", i);
+		// kprintf("total num pages is %ld\n", total_num_pages);
 		if (page_free(i)) {
 			for (unsigned long j = i + 1; j < i + npages; j++) {
 				if (!page_free(j)) {
@@ -434,7 +439,7 @@ paddr_t page_nalloc(unsigned long npages) {
 	// 	bzero((void *)PADDR_TO_KVADDR(pa), npages * PAGE_SIZE);
 	// }
 
-	kprintf("the physical address for nalloc is %d", pa);
+	// kprintf("the physical address for nalloc is %d", pa);
 	lock_release(cm->cm_lock);
 	KASSERT(pa != 0); //TODO: deal with running out of memory in table (probs swapping w disk or moving things around)
 	return pa;

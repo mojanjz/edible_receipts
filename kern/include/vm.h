@@ -92,6 +92,7 @@ vaddr_t alloc_kpages(unsigned npages);
 void free_kpages(vaddr_t addr);
 void free_vpage(vaddr_t addr);
 paddr_t getppages(unsigned long npages);
+paddr_t page_alloc(void);
 
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown_all(void);

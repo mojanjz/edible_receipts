@@ -375,7 +375,6 @@ sys_execv(userptr_t program, char **args)
     kfree(kernel_progname);
     kfree(kargs);
     kfree(size_arr);
-
     /* Return to user mode */
     enter_new_process(argc, (userptr_t)stackptr, NULL, stackptr, entrypoint);
     /* enter process does not return. */

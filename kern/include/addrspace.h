@@ -61,7 +61,6 @@ struct addrspace {
         size_t as_npages2;
         paddr_t as_stackpbase;
 #else
-        /* Put stuff here for your VM system */
         struct outer_pgtable *as_pgtable;
         vaddr_t as_heapbase;
         size_t as_heapsz;

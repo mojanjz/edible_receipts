@@ -101,14 +101,14 @@ free_kpages(vaddr_t addr)
 	paddr_t pa = KVADDR_TO_PADDR(addr);
 	
 	// Translate physical address to a page index
-	lock_acquire(cm->cm_lock);
+	// lock_acquire(cm->cm_lock);
 	unsigned long index = get_cm_index(pa);
 	bool to_delete = cm_decref(index);
 	
 	if (to_delete == true) {
 		cm->cm_entries[index].status = CM_FREE;
 	}
-	lock_release(cm->cm_lock);
+	// lock_release(cm->cm_lock);
 	
 }
 
@@ -209,12 +209,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	// /* Assert that the address space has been set up properly. */
 	KASSERT(as->as_stackbase != 0);
 	KASSERT(as->as_pgtable != NULL);
-
-	// Make sure the faultadress is not corrupt
-	// KASSERT(faultaddress < as->as_stackbase);
-	// KASSERT(faultaddress > as->as_heapbase);
-
-	
 
 	int outer_page_index = GET_OUTER_TABLE_INDEX(faultaddress);
 	int inner_page_index = GET_INNER_TABLE_INDEX(faultaddress);

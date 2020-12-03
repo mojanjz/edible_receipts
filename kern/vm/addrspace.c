@@ -44,6 +44,8 @@ void as_destroy_pgtable(struct addrspace *as);
 void as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new);
 void invalidate_tlb(void);
 
+/* For documentation on the following functions see addrspace.h */
+
 struct addrspace *
 as_create(void)
 {
@@ -52,6 +54,7 @@ as_create(void)
 		return NULL;
 	}
 
+	/* Configure stack and heap  */
 	as->as_stackbase = USERSTACK - STACK_SIZE;
 	as->as_heapbase = 0;
 	as->as_heapsz = 0;
@@ -61,7 +64,7 @@ as_create(void)
 		kfree(as);
 		return NULL;
 	}
-
+	/* Initialize all inner mappings to initially be NULL */
 	for (int i = 0; i < PG_TABLE_SIZE; i++) {
 		as->as_pgtable->inner_mapping[i] = NULL; 
 	}
@@ -76,16 +79,6 @@ as_destroy(struct addrspace *as)
 	as_destroy_pgtable(as);
 	kfree(as);
 	lock_release(vm_lock);
-}
-
-void
-as_destroy_pgtable(struct addrspace *as) {
-	for (int i = 0; i < PG_TABLE_SIZE; i++) {
-		if (as->as_pgtable->inner_mapping[i] != NULL) {
-			kfree(as->as_pgtable->inner_mapping[i]); //TODO: confirm this pointer logic
-		}
-	}
-	
 }
 
 void
@@ -105,14 +98,13 @@ as_activate(void)
 	for (i=0; i<NUM_TLB; i++) {
 		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
 	}
-
 	splx(spl);
 }
 
 void
 as_deactivate(void)
 {
-	/* nothing */
+	/* Do Nothing */
 }
 
 int
@@ -120,38 +112,29 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		 int readable, int writeable, int executable)
 {
 	lock_acquire(vm_lock);
-	// /* Align the region. First, the base... */
-	// sz += vaddr & ~(vaddr_t)PAGE_FRAME;
-	// vaddr &= PAGE_FRAME;
-
-	// /* ...and now the length. */
-	// sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
-
-	// npages = sz / PAGE_SIZE;
 
 	/* We don't use these - all pages are read-write */
 	(void)readable;
 	(void)writeable;
 	(void)executable;
 
-	// Check that segment and heap have not collided 
+	/* Check that segment and heap have not collided  */ 
 	vaddr_t end_of_region = vaddr + sz;
 	if (end_of_region > as->as_heapbase) {
-		//Get the base of the end of region page
+		/* Get the base of the end of region page */
 		vaddr_t page_aligned_eor = 0xfffff000 & end_of_region;
 		page_aligned_eor += PAGE_SIZE;
-		// Actually move the heap base
+		/* Actually move the heap base */
 		as->as_heapbase = page_aligned_eor;
 	}
 
-	// Make sure that heap has not collided into stack
+	/* Make sure that heap has not collided into stack */
 	KASSERT(as->as_heapbase + as->as_heapsz < as->as_stackbase);
-	// kprintf("Heap base in as_define_region: 0x%x\n", as->as_heapbase);
 	lock_release(vm_lock);
 	return 0;
 }
 
-// static
+
 void
 as_zero_region(paddr_t paddr, unsigned npages)
 {
@@ -169,6 +152,7 @@ as_prepare_load(struct addrspace *as)
 int
 as_complete_load(struct addrspace *as)
 {
+	/* Do Nothing */
 	(void)as;
 	return 0;
 }
@@ -184,8 +168,8 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 int
 as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 {
-
 	struct proc *child_proc = get_process_from_pid(child_pid);
+
 	KASSERT(child_proc != NULL);
 	KASSERT(child_proc->p_pid == child_pid);
 	KASSERT(child_proc->p_addrspace == *ret);
@@ -198,12 +182,12 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 	}
 
 	lock_acquire(vm_lock);
-	//Copy over values from existing address space
+	/* Copy over values from existing address space */
 	new->as_heapbase = old->as_heapbase;
 	new->as_heapsz = old->as_heapsz;
 	new->as_stackbase = old->as_stackbase;
 
-	for (int i=0; i< PG_TABLE_SIZE; i++) {
+	for (int i = 0; i < PG_TABLE_SIZE; i++) {
 		if (old->as_pgtable->inner_mapping[i] != NULL) {
 			new->as_pgtable->inner_mapping[i] = kmalloc(sizeof(struct inner_pgtable));
 			if (new->as_pgtable->inner_mapping[i] == NULL){
@@ -213,7 +197,6 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 			as_copy_inner_pgtable(old->as_pgtable->inner_mapping[i], new->as_pgtable->inner_mapping[i]);
 		}
 	}
-
 	invalidate_tlb();
 
 	child_proc = get_process_from_pid(child_pid);
@@ -231,20 +214,6 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 	return 0;
 }
 
-//Iterate over old inner pg table and copy over entries to new one, incrememting ref count
-void
-as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new)
-{
-	
-	for(int i = 0; i < PG_TABLE_SIZE; i++){
-		if (old->p_addrs[i] != 0) {
-			// allocate a new page 
-			new->p_addrs[i] = page_alloc();
-			memmove((void *)PADDR_TO_KVADDR(new->p_addrs[i]),(const void *)PADDR_TO_KVADDR(old->p_addrs[i]), PAGE_SIZE);
-		}
-	}
-}
-
 void
 invalidate_tlb()
 {
@@ -256,4 +225,39 @@ invalidate_tlb()
 	}
 
 	splx(spl);
+}
+
+/* --------------------------------------------------------------------------- */
+
+/* 
+ *
+ */
+void
+as_destroy_pgtable(struct addrspace *as) {
+	for (int i = 0; i < PG_TABLE_SIZE; i++) {
+		if (as->as_pgtable->inner_mapping[i] != NULL) {
+			kfree(as->as_pgtable->inner_mapping[i]); 
+		}
+	}
+	
+}
+
+/* 
+ * Iterate over old inner pg table and copy over entries to new one.
+ * 
+ * Parameters: old (pointer to inner_pgtable to be copied), new (pointer to
+ * inner_pgtable to propagate with info)
+ * Returns: void
+ */
+void
+as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new)
+{
+	
+	for(int i = 0; i < PG_TABLE_SIZE; i++){
+		if (old->p_addrs[i] != 0) {
+			/* Allocate a new page */ 
+			new->p_addrs[i] = page_alloc();
+			memmove((void *)PADDR_TO_KVADDR(new->p_addrs[i]),(const void *)PADDR_TO_KVADDR(old->p_addrs[i]), PAGE_SIZE);
+		}
+	}
 }

@@ -214,8 +214,6 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 	return 0;
 }
 
-/* --------------------------------------------------------------------------- */
-
 /* 
  * Invalidates entries in the tlb
  * 

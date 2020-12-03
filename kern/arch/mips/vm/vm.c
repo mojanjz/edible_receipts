@@ -105,7 +105,7 @@ alloc_kpages(unsigned npages)
 }
 
 /* 
- * Frees physical addresses associated with kernel space
+ * Frees physical page associated given the kernel virtual address (Kernel pages only)
  * Parameter: addr(virtual address corresponding to the physical address to be freed)
  */
 void
@@ -119,20 +119,22 @@ free_kpages(vaddr_t addr)
 }
 
 /*
- * Free a virtual page
+ * Free a physical page given the virtual address (User space pages only)
+ * Parameter: addr(virtual address to be freed)
  */
 void
 free_vpage(vaddr_t addr)
 {
 	struct addrspace *as = proc_getas();
 
+	/* Get the indices of both layers of the page table */
 	int inner_page_index = GET_OUTER_TABLE_INDEX(addr);
     int outer_page_index = GET_OUTER_TABLE_INDEX(addr);
-
-	int cm_index = get_cm_index(as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index]);
-	free_cm_entries(cm_index, 1);
-
-
+	/* If the mapping exists in the page table then free the page */
+	if (as->as_pgtable->inner_mapping != NULL && as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index]!= 0) {
+		int cm_index = get_cm_index(as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index]);
+		free_cm_entries(cm_index, 1);
+	}
 }
 
 void
@@ -148,43 +150,37 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 	panic("vm tried to do tlb shootdown?!\n");
 }
 
+/*
+ *	Handler for when address mapping does not exist in the TLB, called from trap handler
+ *	Parameters: faulttype (the action caused the fault, read, write, readonly)
+				faultadress (the virtual address for which the fault occured)
+	Returns: On success, 0
+			 On failure, error code
+ */
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {	
-
-	lock_acquire(vm_lock);
-
 	paddr_t paddr=0;
 	int i;
 	uint32_t ehi, elo;
 	struct addrspace *as;
 	int spl;
-
+	
 	as = proc_getas();
 	if (as == NULL) {
 		/*
-		 * No address space set up. This is probably also a
+		 * No address space set up. This is probably a
 		 * kernel fault early in boot.
 		 */
-		lock_release(vm_lock);
 		return EFAULT;
 	}
 
-	//Make sure that faultaddress is valid 
-	// if(faulttype != VM_FAULT_WRITE && faulttype != VM_FAULT_READ){
+	/* Check if fault address is valid */
 	if (faultaddress < (as->as_stackbase) && faultaddress >= (as->as_heapbase + as->as_heapsz)) {
-		// kprintf("Invalid address: 0x%x\n",faultaddress);
-		// kprintf("Fault type: %d\n",faulttype);
-		// kprintf("heap base: 0x%x and size %d\n", as->as_heapbase, as->as_heapsz);
-		// kprintf("Stack base: 0x%x\n", as->as_stackbase);
-		lock_release(vm_lock);
 		return SIGSEGV;
 	}
-	// }
 		
-
 	faultaddress &= PAGE_FRAME;
-
 	DEBUG(DB_VM, "vm: fault: 0x%x\n", faultaddress);
 
 	switch (faulttype) {
@@ -195,59 +191,47 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	    case VM_FAULT_WRITE:
 		break;
 	    default:
-		lock_release(vm_lock);
+		// lock_release(vm_lock);
 		return EINVAL;
 	}
 
-	if (curproc == NULL) {
-		/*
-		 * No process. This is probably a kernel fault early
-		 * in boot. Return EFAULT so as to panic instead of
-		 * getting into an infinite faulting loop.
-		 */
-		lock_release(vm_lock);
-		return EFAULT;
-	}
-
-	
-
-	// /* Assert that the address space has been set up properly. */
+	/* Assert that the address space has been set up properly. */
 	KASSERT(as->as_stackbase != 0);
 	KASSERT(as->as_pgtable != NULL);
 
+	/* Index into the page table */
 	int outer_page_index = GET_OUTER_TABLE_INDEX(faultaddress);
 	int inner_page_index = GET_INNER_TABLE_INDEX(faultaddress);
-	// kprintf("the outer page index: %d, the inner page_index: %d\n", outer_page_index, inner_page_index);
 	struct inner_pgtable *inner_table = as->as_pgtable->inner_mapping[outer_page_index];
 
+	/* The inner page table exists */
 	if (inner_table != NULL) {
-		// kprintf("inner page table!\n");
-		// already exists
+		/* The mapping exists */
 		if (inner_table->p_addrs[inner_page_index] != 0) {
 			paddr = inner_table->p_addrs[inner_page_index];
 		}
-		// does not exist
+		/* The mapping does not exist, allocate a page and add the mapping */
 		else {
 			paddr = page_alloc();
 			as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index] = paddr;
 		}
 	}
 	
-	// inner page table does not exist
+	/* The inner page table does not exist, create one */
 	else {
 		as->as_pgtable->inner_mapping[outer_page_index] = create_inner_pgtable();
 		if (as->as_pgtable->inner_mapping[outer_page_index] == NULL) {
-			lock_release(vm_lock);
 			return ENOMEM;
 		}
 
+		/* Add the page mapping to the page table */
 		paddr = page_alloc();
 		as->as_pgtable->inner_mapping[outer_page_index]->p_addrs[inner_page_index] = paddr;
 	}
 
+	/* make sure the physicial page is valid */
 	KASSERT(paddr != 0);
-
-	// /* make sure it's page-aligned */
+	/* make sure it's page-aligned */
 	KASSERT((paddr & PAGE_FRAME) == paddr);
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
@@ -267,10 +251,10 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		tlb_write(ehi, elo, i);
 		in_tlb = true;
 		splx(spl);
-		lock_release(vm_lock);
 		return 0;
 	}
 
+	/* If TLB was full, randomly delete an entry to make room */
 	if (!in_tlb) {
 		ehi = faultaddress;
 		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
@@ -278,10 +262,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 
 	splx(spl);
-	lock_release(vm_lock);
 	return 0;
 }
 
+/*
+ * Creates an inner page table and zeros all the physical address mappings
+ * 
+ */
 struct inner_pgtable *
 create_inner_pgtable() {
 	struct inner_pgtable *inner_table = (struct inner_pgtable *)kmalloc(sizeof(struct inner_pgtable));
@@ -291,7 +278,6 @@ create_inner_pgtable() {
 
 	/* Initialize the entires to be 0 to begin with */
 	for (int i = 0; i < PG_TABLE_SIZE; i++) {
-		// inner_table->p_addrs[i] = (paddr_t)NULL;
 		inner_table->p_addrs[i] = 0;
 
 	}

@@ -48,6 +48,9 @@ unsigned long first_page_index;
 unsigned long total_num_pages;
 bool cm_bootstrapped = false;
 
+/*
+ * Bootstraps data structures relevant to the vm such as the coremap
+ */ 
 void
 vm_bootstrap(void)
 {
@@ -58,11 +61,17 @@ vm_bootstrap(void)
 	}
 }
 
+/*
+ * Steal physical pages before the VM has bootsrapped, can't be called after
+ * The physical pages won't be tracked by the VM
+ * Parameter: npages (number of physical pages required)
+ * Returns: the starting physical address of the pages, (pages are contiguous)
+ */
 paddr_t
 getppages(unsigned long npages) 
 {
-	// kprintf("stealing %ld pages\n", npages);
-	// KASSERT(!cm_bootstrapped); //Shouldn't be able to steal memory after cm in place
+
+	KASSERT(!cm_bootstrapped); // Shouldn't be able to steal memory after cm has bootstrapped
 	paddr_t addr;
 
 	spinlock_acquire(&stealmem_lock);
@@ -73,7 +82,12 @@ getppages(unsigned long npages)
 	return addr;
 }
 
-/* Allocate/free some kernel-space virtual pages */
+/*
+ * Allocates pages for the kernel space, should not be used for user allocation. 
+ * Calls getppages() if vm has not bootstrapped and page_nalloc() otherwise.
+ * Parameters: npages (number of requested pages)
+ * Returns: the kernel virtual address that maps to the physical address (pages are contiguous)
+ */
 vaddr_t
 alloc_kpages(unsigned npages)
 {
@@ -91,23 +105,18 @@ alloc_kpages(unsigned npages)
 }
 
 /* 
- *FOR KERNEL PAGES ONLY 
  * Won't free a page unless there are no more references to it
  */
 void
 free_kpages(vaddr_t addr)
 {	
-	(void) addr;
+	kprintf("in free kpages\n");
 	paddr_t pa = KVADDR_TO_PADDR(addr);
 	
 	// Translate physical address to a page index
 	lock_acquire(cm->cm_lock);
 	unsigned long index = get_cm_index(pa);
-	bool to_delete = cm_decref(index);
-	
-	if (to_delete == true) {
-		cm->cm_entries[index].status = CM_FREE;
-	}
+	cm->cm_entries[index].status = CM_FREE;
 	lock_release(cm->cm_lock);
 	
 }
@@ -132,20 +141,19 @@ free_vpage(vaddr_t addr)
 void
 vm_tlbshootdown_all(void)
 {
-	panic("dumbvm tried to do tlb shootdown?!\n");
+	panic("vm tried to do tlb shootdown?!\n");
 }
 
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)
 {
 	(void)ts;
-	panic("dumbvm tried to do tlb shootdown?!\n");
+	panic("vm tried to do tlb shootdown?!\n");
 }
 
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {	
-	// kprintf("in vm fault :D with address: 0x%x\n", faultaddress);
 
 	lock_acquire(vm_lock);
 
@@ -352,7 +360,7 @@ void coremap_bootstrap(void)
 }
 
 paddr_t page_alloc() {
-	// kprintf("in page_alloc\n");
+	kprintf("in page_alloc\n");
 	paddr_t pa=0;
 	lock_acquire(cm->cm_lock);
 	for (unsigned long i = first_page_index; i < total_num_pages; i++) {
@@ -389,14 +397,10 @@ paddr_t page_nalloc(unsigned long npages) {
 		return page_alloc();
 	}
 
-	// kprintf("number of requested pages are %ld\n", npages);
-
 	KASSERT(i+npages <= total_num_pages);
 
 	lock_acquire(cm->cm_lock);
 	while (i + npages <= total_num_pages) {
-		// kprintf("index is %ld\n", i);
-		// kprintf("total num pages is %ld\n", total_num_pages);
 		if (page_free(i)) {
 			for (unsigned long j = i + 1; j < i + npages; j++) {
 				if (!page_free(j)) {
@@ -415,29 +419,10 @@ paddr_t page_nalloc(unsigned long npages) {
 	if (enough_space) {
 		//Now update the status of the appropriate coremap entries
 		for (unsigned long k = i; k < i + npages; k++) {
-			cm_incref(k);
 			cm->cm_entries[k].status = CM_DIRTY;
 		}
 		bzero((void *)PADDR_TO_KVADDR(pa), npages * PAGE_SIZE);
 	}
-	// else {
-	// 	// TODO: CHANGE
-	// 	// for now let's pick a random index and free contiguous blocks
-	// 	unsigned long index = random() % total_num_pages; 
-	// 	while (index < first_page_index || index+npages > total_num_pages) {
-	// 		index = random() % total_num_pages;
-	// 	}
-
-	// 	kprintf("index to be freed for nalloc %ld", index);
-
-	// 	free_cm_entries(index, npages);
-	// 	pa = get_page_address(index);
-
-	// 	for (unsigned long k = index; k < index + npages; k++) {
-	// 		cm->cm_entries[k].status = CM_DIRTY;
-	// 	}
-	// 	bzero((void *)PADDR_TO_KVADDR(pa), npages * PAGE_SIZE);
-	// }
 
 	// kprintf("the physical address for nalloc is %d", pa);
 	lock_release(cm->cm_lock);
@@ -447,10 +432,7 @@ paddr_t page_nalloc(unsigned long npages) {
 
 void free_cm_entries(unsigned long start_index, unsigned npages) {
 	for (unsigned long i=start_index; i<start_index+npages; i++) {
-		bool can_kfree = cm_decref(i);
-		if (can_kfree) {
-			cm->cm_entries[i].status = CM_FREE;
-		}
+		cm->cm_entries[i].status = CM_FREE;
 	}
 }
 
@@ -469,25 +451,5 @@ unsigned long get_cm_index(paddr_t pa){
 	index =  pa / PAGE_SIZE;
 	return index;
 }
-
-void cm_incref(unsigned long cm_index) {
-	int cur_ref = cm->cm_entries[cm_index].cm_ref;
-	cm->cm_entries[cm_index].cm_ref = cur_ref + 1;
-}
-
-/* Decrements the reference to a coremap entry
- * Returns true if the page has no more references and can be freed
- */
-bool cm_decref(unsigned long cm_index) {
-	bool can_kfree = false;
-	int cur_ref = cm->cm_entries[cm_index].cm_ref;
-	if (cur_ref < 2) {
-		can_kfree = true;
-		cur_ref = 0;
-	}
-	cm->cm_entries[cm_index].cm_ref = cur_ref;
-	return can_kfree;
-}
-
 
 

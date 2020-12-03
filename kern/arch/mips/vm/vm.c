@@ -348,11 +348,9 @@ void coremap_bootstrap(void)
 	for (unsigned long i=0; i < total_num_pages; i++) {
 		if (i < total_num_pages-max_page) {
 			//Make sure that memory used to represent coremap is marked fixed (should never be swapped to disk) 
-			cm->cm_entries[i].status = CM_FIXED;
-			cm->cm_entries[i].cm_ref = 1;	
+			cm->cm_entries[i].status = CM_FIXED;	
 		} else {
 			cm->cm_entries[i].status = CM_FREE;
-			cm->cm_entries[i].cm_ref = 0;
 		}
 	}
 

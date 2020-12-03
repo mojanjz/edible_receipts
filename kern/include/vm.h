@@ -53,7 +53,6 @@ struct lock *vm_lock;
 
 struct coremap_entry {
 	int status; // free, clean, dirty, fixed
-    int cm_ref;
 };
 
 struct coremap {
@@ -70,8 +69,6 @@ struct inner_pgtable{
 };
 
 void coremap_bootstrap(void);
-void cm_incref(unsigned long cm_index);
-bool cm_decref(unsigned long cm_index);
 unsigned long get_cm_index(paddr_t pa);
 
 

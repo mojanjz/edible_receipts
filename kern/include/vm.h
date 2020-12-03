@@ -35,10 +35,10 @@
 /*
  * VM system-related definitions.
  */
-#define CM_FREE 0
-#define CM_DIRTY 1
-#define CM_CLEAN 2
-#define CM_FIXED 3
+#define CM_FREE 0 // page avaialble
+#define CM_DIRTY 1 // page not written to disk 
+#define CM_CLEAN 2 // page written to disk
+#define CM_FIXED 3 // page cannot be freed, used for core data structures
 
 #define PG_TABLE_SIZE PAGE_SIZE/4
 
@@ -49,25 +49,37 @@
 #define GET_OUTER_TABLE_INDEX(vaddr) (((vaddr) & OUTER_TABLE_INDEX) >> 22)
 #define GET_INNER_TABLE_INDEX(vaddr) (((vaddr) & INNER_TABLE_INDEX) >> 12)
 
+/* Lock used for address space functions */
 struct lock *vm_lock;
 
+/* Represents physical pages, state could be CM_FREE, CM_DIRTY, CM_CLEANED, CM_FIXED */
 struct coremap_entry {
-	int status; // free, clean, dirty, fixed
+	int status;
 };
 
+/* Data structure to keep track of all physical pages and their state
+ * All interactions with this data structure must be synchronized
+ */
 struct coremap {
     struct coremap_entry *cm_entries;
     struct lock *cm_lock;
 };
 
-struct outer_pgtable{
-    struct inner_pgtable *inner_mapping[PG_TABLE_SIZE];
-};
-
+/* Two-layer pagetable style
+ * Keeps a mapping of physical pages for a given process 
+ */
 struct inner_pgtable{
     paddr_t p_addrs[PG_TABLE_SIZE];
 };
 
+/* Two-layer pagetable style
+ * Keeps a mapping of all inner_pgtable for a given process 
+ */
+struct outer_pgtable{
+    struct inner_pgtable *inner_mapping[PG_TABLE_SIZE];
+};
+
+/* Coremap functions */
 void coremap_bootstrap(void);
 unsigned long get_cm_index(paddr_t pa);
 
@@ -84,7 +96,7 @@ void vm_bootstrap(void);
 /* Fault handling function called by trap code */
 int vm_fault(int faulttype, vaddr_t faultaddress);
 
-/* Allocate/free kernel heap pages (called by kmalloc/kfree) */
+/* For details on these functions refer to vm.c */
 vaddr_t alloc_kpages(unsigned npages);
 void free_kpages(vaddr_t addr);
 void free_vpage(vaddr_t addr);

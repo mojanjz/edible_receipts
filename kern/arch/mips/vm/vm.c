@@ -191,7 +191,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	    case VM_FAULT_WRITE:
 		break;
 	    default:
-		// lock_release(vm_lock);
 		return EINVAL;
 	}
 
@@ -267,7 +266,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 /*
  * Creates an inner page table and zeros all the physical address mappings
- * 
+ * Returns: On success, an initialized inner page table
+ * 			On failure, NULL (if there is not enough memory)
  */
 struct inner_pgtable *
 create_inner_pgtable() {
@@ -286,6 +286,7 @@ create_inner_pgtable() {
 }
 
 /* Coremap Functions */
+
 void coremap_bootstrap(void)
 {   
     /* Initialize data structures before calling ram functions */

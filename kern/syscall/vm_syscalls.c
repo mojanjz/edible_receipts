@@ -39,59 +39,55 @@
 void free_heap(vaddr_t start, vaddr_t stop);
 
 /*
- *
+ * Adjust the end of the heap (break) by a certain amount.  Note that if amount is a negative amount that
+ * the memory removed from the heap will be freed.
+ * 
+ * Parameters: amount (the amount by which to adjust the end of the heap by), retval (the pointer to the return value 
+ * address)
+ * Returns: the previous value of the end of the heap
  */
 int
 sys_sbrk(ssize_t amount, int *retval)
 {
-    lock_acquire(vm_lock);
-    // struct addrspace *as = kmalloc(sizeof(struct addrspace));
     struct addrspace *as = curproc->p_addrspace;
     if (as == NULL) {
-        kprintf("HEAP ERROR");
-        lock_release(vm_lock);
         return ENOMEM;
     }
-    //Do checks to make sure that this new region is valid
-    //Make sure that the amount to increase is rounded to the nearest page
-    if (amount % PAGE_SIZE != 0){
+    /* Do checks to make sure that this new region is valid */
+    /* First, make sure that the amount to increase is rounded to the nearest page */
+    if (amount % PAGE_SIZE != 0) {
         amount += (PAGE_SIZE - (amount%PAGE_SIZE));
     }
-
-    // Make sure that if amount is negative, that it is a valid value
+    /* Make sure that if amount is negative, that it is a valid value */
     if (as->as_heapbase + as->as_heapsz + amount < as->as_heapbase) {
-        kprintf("HEAP ERROR");
-        lock_release(vm_lock);
         return EINVAL;
     }
-    // Make sure that heap doesn't crash into stack
-    if(as->as_heapbase + as->as_heapsz >= as->as_stackbase) {
-        kprintf("HEAP ERROR");
-        lock_release(vm_lock);
+    /* Make sure that heap doesn't crash into stack */ 
+    if (as->as_heapbase + as->as_heapsz >= as->as_stackbase) {
         return ENOMEM;
     }
-
-    //Having concluded that amount is valid:
-    if (amount > 0) {
-
-    } else if (amount < 0) {
-        // Free all the pages that the heap will no longer contain
+    /*  Having concluded that amount is valid: */
+    if (amount < 0) {
+        /* Free all the pages that the heap will no longer contain */
         free_heap(as->as_heapbase + as->as_heapsz + amount, as->as_heapbase + as->as_heapsz);
     }
 
-    // Store the current (unchanged) value of break/end address of heap region
+    /* Store the current (unchanged) value of break/end address of heap region */
     *retval = (int)(as->as_heapbase + as->as_heapsz);
     as->as_heapsz = as->as_heapsz + amount;
-    lock_release(vm_lock);
+
     return 0; 
 }
 
 /*
- *
+ * This function frees the physical memory in the vaddr range [start,stop]
+ * 
+ * Parameters: start (the address at which to start freeing memory), stop (the address at which to stop
+ * freeing memory - this will be the last addrs freed)
+ * Returns: void
  */
 void free_heap(vaddr_t start, vaddr_t stop)
 {
-    kprintf("In free_heap\n");
     vaddr_t free_addr = start;
     int n = 0;
     while (free_addr <= stop) {

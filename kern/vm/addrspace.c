@@ -214,6 +214,14 @@ as_copy(struct addrspace *old, struct addrspace **ret, pid_t child_pid)
 	return 0;
 }
 
+/* --------------------------------------------------------------------------- */
+
+/* 
+ * Invalidates entries in the tlb
+ * 
+ * Parameters: void
+ * Returns: void
+ */
 void
 invalidate_tlb()
 {
@@ -227,10 +235,12 @@ invalidate_tlb()
 	splx(spl);
 }
 
-/* --------------------------------------------------------------------------- */
 
 /* 
- *
+ * Destroys an address space's page table.
+ * 
+ * Parameters: as (address space who's page table is to be destroyed)
+ * Returns: void
  */
 void
 as_destroy_pgtable(struct addrspace *as) {
@@ -253,7 +263,7 @@ void
 as_copy_inner_pgtable(struct inner_pgtable *old, struct inner_pgtable *new)
 {
 	
-	for(int i = 0; i < PG_TABLE_SIZE; i++){
+	for (int i = 0; i < PG_TABLE_SIZE; i++) {
 		if (old->p_addrs[i] != 0) {
 			/* Allocate a new page */ 
 			new->p_addrs[i] = page_alloc();

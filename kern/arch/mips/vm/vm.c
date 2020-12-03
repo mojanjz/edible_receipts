@@ -29,7 +29,6 @@
 /* under dumbvm, always have 72k of user stack */
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
 #define DUMBVM_STACKPAGES    18
-#define COREMAP_PAGES 2 // TODO: pick the right number
 
 /* Function prototypes */
 bool page_free(unsigned long cm_index);
@@ -49,7 +48,10 @@ unsigned long total_num_pages;
 bool cm_bootstrapped = false;
 
 /*
- * Bootstraps data structures relevant to the vm such as the coremap
+ * Bootstraps data structures relevant to the vm such as the coremap.
+ * 
+ * Parameters: void
+ * Returns: void
  */ 
 void
 vm_bootstrap(void)
@@ -64,6 +66,7 @@ vm_bootstrap(void)
 /*
  * Steal physical pages before the VM has bootsrapped, can't be called after
  * The physical pages won't be tracked by the VM
+ * 
  * Parameter: npages (number of physical pages required)
  * Returns: the starting physical address of the pages, (pages are contiguous)
  */
@@ -85,6 +88,7 @@ getppages(unsigned long npages)
 /*
  * Allocates pages for the kernel space, should not be used for user allocation. 
  * Calls getppages() if vm has not bootstrapped and page_nalloc() otherwise.
+ * 
  * Parameters: npages (number of requested pages)
  * Returns: the kernel virtual address that maps to the physical address (pages are contiguous)
  */
@@ -106,7 +110,9 @@ alloc_kpages(unsigned npages)
 
 /* 
  * Frees physical page associated given the kernel virtual address (Kernel pages only)
- * Parameter: addr(virtual address corresponding to the physical address to be freed)
+ * 
+ * Parameters: addr(virtual address corresponding to the physical address to be freed)
+ * Returns: void
  */
 void
 free_kpages(vaddr_t addr)
@@ -120,7 +126,9 @@ free_kpages(vaddr_t addr)
 
 /*
  * Free a physical page given the virtual address (User space pages only)
- * Parameter: addr(virtual address to be freed)
+ * 
+ * Parameters: addr(virtual address to be freed)
+ * Returns: void
  */
 void
 free_vpage(vaddr_t addr)
@@ -153,9 +161,9 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 /*
  *	Handler for when address mapping does not exist in the TLB, called from trap handler
  *	Parameters: faulttype (the action caused the fault, read, write, readonly)
-				faultadress (the virtual address for which the fault occured)
-	Returns: On success, 0
-			 On failure, error code
+ *				faultadress (the virtual address for which the fault occured)
+ *	Returns: On success, 0
+ *			 On failure, error code
  */
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
@@ -266,8 +274,10 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 }
 
 /*
- * Creates an inner page table and zeros all the physical address mappings
+ * Creates an inner page table and zeros all the physical address mappings.
  * 
+ * Parameters: void
+ * Returns: void
  */
 struct inner_pgtable *
 create_inner_pgtable() {
@@ -279,7 +289,6 @@ create_inner_pgtable() {
 	/* Initialize the entires to be 0 to begin with */
 	for (int i = 0; i < PG_TABLE_SIZE; i++) {
 		inner_table->p_addrs[i] = 0;
-
 	}
 
 	return inner_table;

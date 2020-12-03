@@ -29,7 +29,6 @@
 /* under dumbvm, always have 72k of user stack */
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
 #define DUMBVM_STACKPAGES    18
-#define COREMAP_PAGES 2 // TODO: pick the right number
 
 /* Function prototypes */
 bool page_free(unsigned long cm_index);
@@ -49,7 +48,10 @@ unsigned long total_num_pages;
 bool cm_bootstrapped = false;
 
 /*
- * Bootstraps data structures relevant to the vm such as the coremap
+ * Bootstraps data structures relevant to the vm such as the coremap.
+ * 
+ * Parameters: void
+ * Returns: void
  */ 
 void
 vm_bootstrap(void)
@@ -64,6 +66,7 @@ vm_bootstrap(void)
 /*
  * Steal physical pages before the VM has bootsrapped, can't be called after
  * The physical pages won't be tracked by the VM
+ * 
  * Parameter: npages (number of physical pages required)
  * Returns: the starting physical address of the pages, (pages are contiguous)
  */
@@ -85,6 +88,7 @@ getppages(unsigned long npages)
 /*
  * Allocates pages for the kernel space, should not be used for user allocation. 
  * Calls getppages() if vm has not bootstrapped and page_nalloc() otherwise.
+ * 
  * Parameters: npages (number of requested pages)
  * Returns: the kernel virtual address that maps to the physical address (pages are contiguous)
  */
@@ -106,7 +110,9 @@ alloc_kpages(unsigned npages)
 
 /* 
  * Frees physical page associated given the kernel virtual address (Kernel pages only)
- * Parameter: addr(virtual address corresponding to the physical address to be freed)
+ * 
+ * Parameters: addr(virtual address corresponding to the physical address to be freed)
+ * Returns: void
  */
 void
 free_kpages(vaddr_t addr)
@@ -120,7 +126,9 @@ free_kpages(vaddr_t addr)
 
 /*
  * Free a physical page given the virtual address (User space pages only)
- * Parameter: addr(virtual address to be freed)
+ * 
+ * Parameters: addr(virtual address to be freed)
+ * Returns: void
  */
 void
 free_vpage(vaddr_t addr)
@@ -153,9 +161,9 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 /*
  *	Handler for when address mapping does not exist in the TLB, called from trap handler
  *	Parameters: faulttype (the action caused the fault, read, write, readonly)
-				faultadress (the virtual address for which the fault occured)
-	Returns: On success, 0
-			 On failure, error code
+ *				faultadress (the virtual address for which the fault occured)
+ *	Returns: On success, 0
+ *			 On failure, error code
  */
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
@@ -279,91 +287,88 @@ create_inner_pgtable() {
 	/* Initialize the entires to be 0 to begin with */
 	for (int i = 0; i < PG_TABLE_SIZE; i++) {
 		inner_table->p_addrs[i] = 0;
-
 	}
 
 	return inner_table;
 }
 
-/* Coremap Functions */
-
+/* 
+ * Initialize the physical memory management data structure, the coremap.
+ * 
+ * Parameters: void
+ * Returns: void
+ */
 void coremap_bootstrap(void)
 {   
     /* Initialize data structures before calling ram functions */
 	cm = kmalloc(sizeof(struct coremap));
-	kprintf("the size of cm is %d", sizeof(struct coremap));
     cm->cm_lock = lock_create("cm_lock");
-	// struct lock *cm_lock = lock_create("cm_lock");
 	if(cm->cm_lock == NULL){
-		kprintf("couldnt make the lock");
 		panic("Couldn't make coremap lock");
 	}
-	// Stealing memory needed to represent our coremap
-	// paddr_t coremap_addr = getppages(COREMAP_PAGES); //TODO: find real size of coremap
-	// KASSERT(coremap_addr != 0); //Confirm first address is not zero based on requirements for using PADDR_TO_KVADDR
-	// kprintf("The address of the coremap: %d\n", coremap_addr);
-	// Get "base and bounds" of our remaining memory
-	    
+
+	/* Get "base and bounds" of our remaining memory */
 	paddr_t last_addr = ram_getsize(); // Must be called before ram_getfirstfree
 	total_num_pages = last_addr / PAGE_SIZE; // Number of pages needed to represent all memory.
 	/* Initialize coremap */
-	cm->cm_entries = kmalloc(sizeof(struct coremap_entry)*total_num_pages);
-	kprintf("the size of the cm_entry array is %ld", sizeof(struct coremap_entry)*total_num_pages);
-	
+	cm->cm_entries = kmalloc(sizeof(struct coremap_entry)*total_num_pages);	
     paddr_t first_addr = ram_getfirstfree(); //Note that calling this function means we can no longer use any functions in ram.c - can only be called once, ram_stealmem will no longer work.
-
-	kprintf("first address %d\n",first_addr);
-	kprintf(" and second address %d\n", last_addr);
 
 	KASSERT(last_addr > first_addr);
 
     unsigned long max_page = (last_addr - first_addr) / PAGE_SIZE; //Should yeild truncated value to never overestimate the number of pages we have the memory for 
 	first_page_index = total_num_pages - max_page; 
-	kprintf("first page index is %ld", first_page_index);
-	kprintf("max page is %ld", max_page);
 
-	
-	for (unsigned long i=0; i < total_num_pages; i++) {
+	for (unsigned long i = 0; i < total_num_pages; i++) {
 		if (i < total_num_pages-max_page) {
-			//Make sure that memory used to represent coremap is marked fixed (should never be swapped to disk) 
+			/* Make sure that memory used to represent coremap is marked fixed (should never be swapped to disk) */
 			cm->cm_entries[i].status = CM_FIXED;	
 		} else {
+			/* All other memory should be initialized to be free */
 			cm->cm_entries[i].status = CM_FREE;
 		}
 	}
-
 	cm_bootstrapped = true;
 }
 
+/*
+ * Allocate a single page
+ * 
+ * Parameters: void
+ * Returns: the physical address of the allocated page
+ */
 paddr_t page_alloc() {
 	paddr_t pa=0;
 	lock_acquire(cm->cm_lock);
 	for (unsigned long i = first_page_index; i < total_num_pages; i++) {
 		if (page_free(i)) {
-			// kprintf("got a free page at index %ld\n", i);
 			KASSERT(cm->cm_entries[i].status != CM_FIXED);
 			cm->cm_entries[i].status = CM_DIRTY;
 			pa = get_page_address(i);
-			// kprintf("the physical page is %d\n", pa);
 			break;
 		}
 	}
 	lock_release(cm->cm_lock);
 
-	if (pa == 0){
+	if (pa == 0) {
 		return ENOMEM;
 	}
-
-	// TODO ADD FREEING PAGES IF NO PAGE IS AVAILABLE
 	bzero((void *)PADDR_TO_KVADDR(pa), PAGE_SIZE);
 	return pa;
 }
 
+/* 
+ * Allocates npages pages
+ * 
+ * Parameters: npages (number of pages to allocate)
+ * Returns: 
+ */
 paddr_t page_nalloc(unsigned long npages) {
 	unsigned long i = first_page_index;
 	bool enough_space = true;
 	paddr_t pa = 0;
 
+	/* Should not be requesting to allocate more pages than physically exist */
 	if (npages > total_num_pages) {
 		return EINVAL;
 	}
@@ -371,8 +376,8 @@ paddr_t page_nalloc(unsigned long npages) {
 	if (npages == 1) {
 		return page_alloc();
 	}
-
-	KASSERT(i+npages <= total_num_pages);
+	/* Requested pages should be less than the pages available to the VM (excludes kernel pages) */
+	KASSERT(i+npages <= total_num_pages); 
 
 	lock_acquire(cm->cm_lock);
 	while (i + npages <= total_num_pages) {
@@ -392,35 +397,57 @@ paddr_t page_nalloc(unsigned long npages) {
 	}
 
 	if (enough_space) {
-		//Now update the status of the appropriate coremap entries
+		/* Now update the status of the appropriate coremap entries */
 		for (unsigned long k = i; k < i + npages; k++) {
 			cm->cm_entries[k].status = CM_DIRTY;
 		}
 		bzero((void *)PADDR_TO_KVADDR(pa), npages * PAGE_SIZE);
 	}
-
-	// kprintf("the physical address for nalloc is %d", pa);
 	lock_release(cm->cm_lock);
-	KASSERT(pa != 0); //TODO: deal with running out of memory in table (probs swapping w disk or moving things around)
+	KASSERT(pa != 0); 
 	return pa;
 }
 
+/* 
+ * Frees npages of coremap entries starting at start_index
+ * 
+ * Parameters: start_index (first coremap entry to free), npages (number of pages to free)
+ * Returns: void
+ */
 void free_cm_entries(unsigned long start_index, unsigned npages) {
-	for (unsigned long i=start_index; i<start_index+npages; i++) {
+	for (unsigned long i = start_index; i < start_index+npages; i++) {
 		cm->cm_entries[i].status = CM_FREE;
 	}
 }
 
+/* 
+ * Checks if the page associated with a given coremap index is free
+ * 
+ * Parameters: cm_index (coremap index to check)
+ * Returns: true if free, false otherwise
+ */
 bool page_free(unsigned long cm_index) {
 	return cm->cm_entries[cm_index].status == CM_FREE;
 }
 
+/* 
+ * Get the physical address corresponding to an index of the coremap 
+ * 
+ * Parameters: cm_index (coremap index to look up the physical address for)
+ * Returns: physical address 
+ */
 paddr_t get_page_address(unsigned long cm_index){
 	paddr_t pa;
-	pa = (paddr_t) cm_index*PAGE_SIZE;
+	pa = (paddr_t) cm_index * PAGE_SIZE;
 	return pa;
 }
 
+/* 
+ * Gets the index for the coremap that corresponds to a physical address
+ * 
+ * Parameters: pa (physical address to look up the coremap entry for)
+ * Return: index of coremap
+ */
 unsigned long get_cm_index(paddr_t pa){
 	unsigned long index;
 	index =  pa / PAGE_SIZE;
